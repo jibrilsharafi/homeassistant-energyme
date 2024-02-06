@@ -6,6 +6,6 @@
   ],
   "documentation": "https://www.home-assistant.io/integrations/energyme",
   "iot_class": "local_polling",
-  "version": "0.1.0",
-  "issue_tracker": "https://github.com/jibrilsharafi/homeassistant-energyme/issues"
+  "issue_tracker": "https://github.com/jibrilsharafi/homeassistant-energyme/issues",
+  "version": "0.1.0"
 }
