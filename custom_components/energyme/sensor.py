@@ -51,10 +51,10 @@ def setup_platform(
     sensors.append(EnergyMeSensor(data, 0, None, "voltage", "V"))
     for i in range(0, TOTAL_CHANNELS):  # 17 channels
         sensors.append(
-            EnergyMeSensor(data, i, channel_data[i]["label"], "activePower", "W")
+            EnergyMeSensor(data, i, channel_data[str(i)]["label"], "activePower", "W")
         )
         sensors.append(
-            EnergyMeSensor(data, i, channel_data[i]["label"], "activeEnergy", "Wh")
+            EnergyMeSensor(data, i, channel_data[str(i)]["label"], "activeEnergy", "Wh")
         )
 
     add_entities(sensors)
