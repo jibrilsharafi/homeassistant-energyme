@@ -166,8 +166,8 @@ class EnergyMeSensor(CoordinatorEntity, SensorEntity):
         self._attr_device_info = {
             "identifiers": {(DOMAIN, entry_id)}, # Matches unique_id of config_entry
             "name": f"EnergyMe ({coordinator.hass.data[DOMAIN][entry_id].config_entry.data.get(CONF_HOST)})", # Get host from entry data
-            "manufacturer": "J", # Replace if you have this info
-            # "model": "ESP32-S3 Energy Meter", # Replace if you have this info
+            "manufacturer": "Jibril Sharafi",
+            "model": "EnergyMe - Home",
             # "sw_version": coordinator.data.get("firmware_version"), # If available in coordinator data
         }
         # Ensure coordinator.data is not None before accessing
