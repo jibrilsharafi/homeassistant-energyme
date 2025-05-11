@@ -6,9 +6,9 @@ import voluptuous as vol
 
 from homeassistant import config_entries
 from homeassistant.core import callback
-from homeassistant.const import CONF_NAME # If you want to allow naming the device
+from homeassistant.const import CONF_NAME  # If you want to allow naming the device
 
-from .const import DOMAIN, CONF_HOST
+from .const import DOMAIN, CONF_HOST, CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL  # Added CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -35,16 +35,16 @@ class EnergyMeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 # Test connection - use /rest/is-alive
                 # We need to run this in an executor since requests is blocking
                 is_alive_url = f"http://{host}/rest/is-alive"
-                
+
                 # Using hass.async_add_executor_job for synchronous requests
                 response = await self.hass.async_add_executor_job(
                     requests.get, is_alive_url, {"timeout": 5}
                 )
-                response.raise_for_status() # Raise HTTPError for bad responses (4xx or 5xx)
-                
+                response.raise_for_status()  # Raise HTTPError for bad responses (4xx or 5xx)
+
                 # Check response content if necessary, e.g., response.json().get("message") == "True"
                 # For now, a 200 OK is sufficient proof of "alive"
-                
+
                 # Set a unique ID for the config entry to prevent duplicates
                 # You could use a device MAC address or serial if available from an info endpoint
                 # For now, host is unique enough for this purpose.
@@ -64,9 +64,9 @@ class EnergyMeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             except requests.exceptions.HTTPError as err:
                 _LOGGER.error("HTTP error connecting to %s: %s", host, err)
                 if err.response.status_code == 401:
-                     errors["base"] = "invalid_auth"
+                    errors["base"] = "invalid_auth"
                 else:
-                     errors["base"] = "cannot_connect_http" # Generic HTTP error
+                    errors["base"] = "cannot_connect_http"  # Generic HTTP error
             except Exception as e:  # pylint: disable=broad-except
                 _LOGGER.exception("Unexpected exception: %s", e)
                 errors["base"] = "unknown"
@@ -75,16 +75,39 @@ class EnergyMeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="user", data_schema=DATA_SCHEMA, errors=errors
         )
 
-    # If you want to add options flow later (e.g., for update interval)
-    # @staticmethod
-    # @callback
-    # def async_get_options_flow(config_entry):
-    #     return EnergyMeOptionsFlowHandler(config_entry)
+    @staticmethod
+    @callback
+    def async_get_options_flow(config_entry):
+        """Get the options flow for this handler."""
+        return EnergyMeOptionsFlowHandler(config_entry)
 
-# class EnergyMeOptionsFlowHandler(config_entries.OptionsFlow):
-#    def __init__(self, config_entry: config_entries.ConfigEntry):
-#        self.config_entry = config_entry
-#
-#    async def async_step_init(self, user_input=None):
-#        # Manage an options flow for scan interval, etc.
-#        pass
+
+class EnergyMeOptionsFlowHandler(config_entries.OptionsFlow):
+    """Handle EnergyMe options."""
+
+    def __init__(self, config_entry: config_entries.ConfigEntry):
+        """Initialize EnergyMe options flow."""
+        self.config_entry = config_entry
+
+    async def async_step_init(self, user_input=None):
+        """Manage the options."""
+        if user_input is not None:
+            return self.async_create_entry(title="", data=user_input)
+
+        current_scan_interval = self.config_entry.options.get(
+            CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
+        )
+
+        options_schema = vol.Schema(
+            {
+                vol.Optional(
+                    CONF_SCAN_INTERVAL,
+                    default=current_scan_interval,
+                ): vol.All(vol.Coerce(int), vol.Range(min=5)),  # Ensure positive integer, min 5 seconds
+            }
+        )
+
+        return self.async_show_form(
+            step_id="init",
+            data_schema=options_schema,
+        )

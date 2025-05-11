@@ -12,7 +12,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.exceptions import ConfigEntryNotReady
 
-from .const import DOMAIN, CONF_HOST, DEFAULT_SCAN_INTERVAL
+from .const import DOMAIN, CONF_HOST, DEFAULT_SCAN_INTERVAL, CONF_SCAN_INTERVAL
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -20,13 +20,29 @@ _LOGGER = logging.getLogger(__name__)
 PLATFORMS = ["sensor"]
 
 
+async def async_update_options_listener(hass: HomeAssistant, entry: ConfigEntry):
+    """Handle options update."""
+    coordinator: DataUpdateCoordinator = hass.data[DOMAIN][entry.entry_id]
+    new_scan_interval = entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
+    _LOGGER.debug(
+        "Updating scan interval for %s to %s seconds",
+        entry.title,
+        new_scan_interval,
+    )
+    coordinator.update_interval = timedelta(seconds=new_scan_interval)
+    # Optionally, you might want to request a refresh if the interval change should trigger an immediate update
+    # await coordinator.async_request_refresh()
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up EnergyMe from a config entry."""
     host = entry.data[CONF_HOST]
     session = async_get_clientsession(hass)
 
+    # Get scan interval from options, fallback to default
+    scan_interval = entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
+
     # Create an API client or coordinator instance
-    # We'll use DataUpdateCoordinator to fetch all data periodically
     async def async_update_data():
         """Fetch data from API endpoint."""
         # Note: Using hass.async_add_executor_job for synchronous requests
@@ -70,7 +86,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         _LOGGER,
         name=f"{DOMAIN}_coordinator_{host}",
         update_method=async_update_data,
-        update_interval=timedelta(seconds=DEFAULT_SCAN_INTERVAL), # Make this configurable later via options flow
+        update_interval=timedelta(seconds=scan_interval),  # Use configured scan_interval
     )
 
     # Fetch initial data so we have it when entities are set up.
@@ -84,7 +100,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Using new method for HA 2022.11+
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
-    # TODO: Add listener for options flow updates if you implement it
+    # Add listener for options flow updates
+    entry.async_on_unload(entry.add_update_listener(async_update_options_listener))
 
     return True
 
