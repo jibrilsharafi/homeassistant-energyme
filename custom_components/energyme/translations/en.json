@@ -2,7 +2,7 @@
     "config": {
         "step": {
             "user": {
-                "description": "If you need help with the configuration have a look here: https://github.com/ludeeus/energyme",
+                "description": "If you need help with the configuration have a look here: https://github.com/jibrilsharafi/EnergyMe-Home",
                 "data": {
                     "username": "Username",
                     "password": "Password"
