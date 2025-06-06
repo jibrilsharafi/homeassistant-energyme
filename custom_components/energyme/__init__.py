@@ -1,16 +1,12 @@
 """The EnergyMe integration."""
-import asyncio
 import logging
 from datetime import timedelta
 
-import voluptuous as vol
 import requests
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
-from homeassistant.exceptions import ConfigEntryNotReady
 
 from .const import DOMAIN, CONF_HOST, DEFAULT_SCAN_INTERVAL, CONF_SCAN_INTERVAL
 
@@ -37,7 +33,6 @@ async def async_update_options_listener(hass: HomeAssistant, entry: ConfigEntry)
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up EnergyMe from a config entry."""
     host = entry.data[CONF_HOST]
-    session = async_get_clientsession(hass)
 
     # Get scan interval from options, fallback to default
     scan_interval = entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
@@ -95,7 +90,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN][entry.entry_id] = coordinator
-    
+
     # Forward the setup to the sensor platform.
     # Using new method for HA 2022.11+
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)

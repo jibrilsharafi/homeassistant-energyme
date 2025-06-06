@@ -1,6 +1,5 @@
 """Platform for sensor integration."""
 import logging
-from typing import Any, Dict, Optional
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -9,7 +8,7 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, CoordinatorEntity
 from homeassistant.const import (
@@ -63,10 +62,10 @@ async def async_setup_entry(
     # meter_data_list = coordinator.data.get("meter", []) # from /rest/meter
 
     sensors = []
-    
+
     # The /rest/get-channel provides channel activity and labels
     # The /rest/meter provides the actual data, indexed
-    
+
     # Create a map of index to channel label from channel_configs for active channels
     active_channel_labels = {}
     for ch_index_str, ch_data in channel_configs.items():
@@ -76,24 +75,24 @@ async def async_setup_entry(
     # Iterate through meter data, which is an array.
     # Each item in meter_data_list corresponds to a channel.
     # We only create sensors for channels marked active in channel_configs.
-    
+
     # The coordinator fetches all meter data. Sensors will pull from this.
     # We need to know the structure of meter_data_list to create sensors.
     # Assuming meter_data_list is like:
     # [ {"index": 0, "label": "Main", "data": {"voltage": 230, ...}}, ... ]
-    
+
     # Let's assume for now that the number of items in meter_data_list is fixed (e.g., 17)
     # and we only light up sensors for those whose index is in active_channel_labels.
-    
+
     # Instead of iterating meter_data_list (which changes), iterate potential channels
     # and active_channel_labels.
-    
+
     max_channels_possible = 17 # As per your original TOTAL_CHANNELS
-    
+
     for channel_index in range(max_channels_possible):
         if channel_index in active_channel_labels:
             channel_label = active_channel_labels[channel_index]
-            
+
             # For each metric in SENSOR_TYPES_MAPPING, create a sensor
             for api_key, (name_suffix, unit, dev_class, state_class, icon) in SENSOR_TYPES_MAPPING.items():
                 # Special handling for voltage: API might provide it once or per channel.
@@ -131,24 +130,24 @@ class EnergyMeSensor(CoordinatorEntity, SensorEntity):
         channel_label: str,
         api_key: str,
         name_suffix: str,
-        unit: Optional[str],
-        device_class: Optional[SensorDeviceClass],
-        state_class: Optional[SensorStateClass],
-        icon_override: Optional[str] = None,
+        unit: str | None,
+        device_class: SensorDeviceClass | None,
+        state_class: SensorStateClass | None,
+        icon_override: str | None = None,
     ) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator)
         self._channel_index = channel_index
         self._api_key = api_key # e.g., "activePower"
-        
+
         # Construct a unique ID: domain_entryid_channelX_apikey
         self._attr_unique_id = f"{DOMAIN}_{entry_id}_ch{channel_index}_{api_key}"
-        
+
         # Initialize self.entity_description with key and dynamic name
         # The 'key' should be a stable identifier for this type of sensor description.
         # 'api_key' (e.g., "voltage", "activePower") is a good candidate.
         self.entity_description = SensorEntityDescription(
-            key=api_key, 
+            key=api_key,
             name=f"{channel_label} {name_suffix}"
         )
 
@@ -161,7 +160,7 @@ class EnergyMeSensor(CoordinatorEntity, SensorEntity):
              self._attr_icon = "mdi:chart-bar"
         elif unit == UnitOfPower.WATT: # Default power icon
              self._attr_icon = "mdi:flash"
-        
+
         # Device Info: Link all sensors to a single device entry
         self._attr_device_info = {
             "identifiers": {(DOMAIN, entry_id)}, # Matches unique_id of config_entry
@@ -175,20 +174,20 @@ class EnergyMeSensor(CoordinatorEntity, SensorEntity):
         # For now, keeping it simple.
 
     @property
-    def native_value(self) -> Optional[float]:
+    def native_value(self) -> float | None:
         """Return the state of the sensor."""
         if not self.coordinator.last_update_success or not self.coordinator.data:
             return None
-            
+
         meter_data_list = self.coordinator.data.get("meter", [])
-        
+
         # Find the data for our specific channel_index
         channel_data = None
         for item in meter_data_list:
             if item.get("index") == self._channel_index:
                 channel_data = item.get("data")
                 break
-        
+
         if channel_data and self._api_key in channel_data:
             try:
                 value = float(channel_data[self._api_key])
@@ -209,11 +208,11 @@ class EnergyMeSensor(CoordinatorEntity, SensorEntity):
         # Available if the coordinator is successful and the specific data point exists
         if not self.coordinator.last_update_success:
             return False
-        
+
         # Check if the specific data point is available (it might not be for some reason)
         # This is implicitly handled by native_value returning None if data isn't there.
         # A more explicit check could be added if needed.
         return super().available
-        
+
     # The name property is now handled by self.entity_description.name and _attr_has_entity_name = True
     # The icon, unit_of_measurement, device_class, state_class are set as _attr_ properties.
