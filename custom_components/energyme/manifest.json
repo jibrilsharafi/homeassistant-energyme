@@ -1,7 +1,7 @@
 {
   "domain": "energyme",
   "name": "EnergyMe",
-  "documentation": "https://www.home-assistant.io/integrations/energyme",
+  "documentation": "https://github.com/jibrilsharafi/homeassistant-energyme",
   "issue_tracker": "https://github.com/jibrilsharafi/homeassistant-energyme/issues",
   "codeowners": [
     "@jibrilsharafi"
