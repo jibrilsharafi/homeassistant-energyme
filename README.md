@@ -55,41 +55,58 @@ For each active channel configured on your EnergyMe device, the integration crea
 ## Configuration
 
 1. Go to **Settings** → **Devices & Services** → **Add Integration**
-2. Search for "EnergyMe" 
-3. Enter the IP address or hostname of your EnergyMe device
+2. Search for "EnergyMe"
+3. Enter the following information:
+   - **Host**: IP address or hostname of your EnergyMe device
+   - **Username**: Your EnergyMe device username (the standard one is `admin`)
+   - **Password**: Your EnergyMe device password (if unchanged, is `energyme`)
 4. The integration will automatically discover active channels and create appropriate sensors
 
 ### Configuration Options
 
+After initial setup, you can configure additional options by going to **Settings** → **Devices & Services** → **EnergyMe** → **Configure**:
+
 - **Host**: IP address or hostname of your EnergyMe device
-- **Update Interval**: How often to fetch data from the device (default: 10 seconds, minimum: 5 seconds)
+- **Username**: Username for digest authentication (required)
+- **Password**: Password for digest authentication (required)
+- **Scan Interval**: How often to fetch data from the device (default: 10 seconds, minimum: 5 seconds)
+  - Lower values provide more frequent updates but increase database storage usage
+  - Higher values reduce database growth but provide less frequent data updates
+  - Recommended: 10-30 seconds for most use cases
 
 ## Device Requirements
 
 Your EnergyMe device must:
+
 - Be connected to the same network as your Home Assistant instance
 - Have REST API endpoints enabled (default configuration)
+- Support HTTP Digest Authentication (username/password required)
 - Respond to the following endpoints:
-  - `/rest/is-alive` - Device health check
-  - `/rest/get-channel` - Channel configuration
-  - `/rest/meter` - Real-time energy data
+  - `/api/v1/health` - Device health check
+  - `/api/v1/ade7953/channel` - Channel configuration
+  - `/api/v1/ade7953/meter-values` - Real-time energy data
 
 ## Troubleshooting
 
 ### Connection Issues
+
 - Verify your EnergyMe device is powered on and connected to the network
 - Check that the IP address/hostname is correct
+- Verify your username and password are correct
 - Ensure there are no firewall rules blocking communication
-- Try accessing `http://[device-ip]/rest/is-alive` in a web browser
+- Try accessing `http://[device-ip]/api/v1/health` in a web browser (you may be prompted for credentials)
 
 ### Missing Sensors
+
 - Check that channels are properly configured and marked as "active" on your EnergyMe device
-- Verify the device is returning data at `/rest/meter` endpoint
+- Verify the device is returning data at `/api/v1/ade7953/meter-values` endpoint
 - Check Home Assistant logs for any error messages
 
 ### Performance
-- If you experience performance issues, try increasing the update interval in the integration options
-- The default 10-second interval provides good real-time monitoring while minimizing network traffic
+
+- If you experience performance issues or want to reduce database storage usage, increase the scan interval in the integration options
+- The default 10-second interval provides good real-time monitoring while balancing database storage requirements
+- For long-term energy monitoring, consider intervals of 30-60 seconds to minimize database growth
 
 ## Development
 

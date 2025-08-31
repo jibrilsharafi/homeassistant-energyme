@@ -1,14 +1,23 @@
 """The EnergyMe integration."""
+
 import logging
 from datetime import timedelta
 
 import requests
+from requests.auth import HTTPDigestAuth
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .const import DOMAIN, CONF_HOST, DEFAULT_SCAN_INTERVAL, CONF_SCAN_INTERVAL
+from .const import (
+    DOMAIN,
+    CONF_HOST,
+    CONF_USERNAME,
+    CONF_PASSWORD,
+    DEFAULT_SCAN_INTERVAL,
+    CONF_SCAN_INTERVAL,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -33,9 +42,14 @@ async def async_update_options_listener(hass: HomeAssistant, entry: ConfigEntry)
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up EnergyMe from a config entry."""
     host = entry.data[CONF_HOST]
+    username = entry.data[CONF_USERNAME]
+    password = entry.data[CONF_PASSWORD]
 
     # Get scan interval from options, fallback to default
     scan_interval = entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
+
+    # Create digest auth object
+    auth = HTTPDigestAuth(username, password)
 
     # Create an API client or coordinator instance
     async def async_update_data():
@@ -43,19 +57,33 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         # Note: Using hass.async_add_executor_job for synchronous requests
         # If your device/API supported asyncio, you'd use session.get directly
         try:
-            # Fetch channel configuration (less frequent, could be separate or on setup)
-            channel_config_url = f"http://{host}/rest/get-channel"
-            raw_channel_config = await hass.async_add_executor_job(
-                requests.get, channel_config_url, {"timeout": 5}
-            )
+            # Fetch channel configuration using new API endpoint
+            channel_config_url = f"http://{host}/api/v1/ade7953/channel"
+
+            def get_channel_config():
+                return requests.get(
+                    channel_config_url,
+                    auth=auth,
+                    timeout=5,
+                    headers={"accept": "application/json"}
+                )
+
+            raw_channel_config = await hass.async_add_executor_job(get_channel_config)
             raw_channel_config.raise_for_status()
             channel_config = raw_channel_config.json()
 
-            # Fetch meter data
-            meter_data_url = f"http://{host}/rest/meter"
-            raw_meter_data = await hass.async_add_executor_job(
-                requests.get, meter_data_url, {"timeout": 5}
-            )
+            # Fetch meter data using new API endpoint
+            meter_data_url = f"http://{host}/api/v1/ade7953/meter-values"
+
+            def get_meter_data():
+                return requests.get(
+                    meter_data_url,
+                    auth=auth,
+                    timeout=5,
+                    headers={"accept": "application/json"}
+                )
+
+            raw_meter_data = await hass.async_add_executor_job(get_meter_data)
             raw_meter_data.raise_for_status()
             meter_data = raw_meter_data.json()
 
@@ -81,7 +109,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         _LOGGER,
         name=f"{DOMAIN}_coordinator_{host}",
         update_method=async_update_data,
-        update_interval=timedelta(seconds=scan_interval),  # Use configured scan_interval
+        update_interval=timedelta(
+            seconds=scan_interval
+        ),  # Use configured scan_interval
     )
 
     # Fetch initial data so we have it when entities are set up.

@@ -16,7 +16,7 @@ from homeassistant.const import (
     UnitOfPower, # For W/kW
     UnitOfElectricCurrent, # For A
     UnitOfElectricPotential, # For V
-    POWER_VOLT_AMPERE_REACTIVE, # For var
+    UnitOfReactivePower, # For var
     UnitOfApparentPower, # For VA
 )
 
@@ -31,7 +31,7 @@ SENSOR_TYPES_MAPPING = {
     "voltage": ("Voltage", UnitOfElectricPotential.VOLT, SensorDeviceClass.VOLTAGE, SensorStateClass.MEASUREMENT, "mdi:sine-wave"),
     "current": ("Current", UnitOfElectricCurrent.AMPERE, SensorDeviceClass.CURRENT, SensorStateClass.MEASUREMENT, "mdi:current-ac"),
     "activePower": ("Active Power", UnitOfPower.WATT, SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, "mdi:flash"),
-    "reactivePower": ("Reactive Power", POWER_VOLT_AMPERE_REACTIVE, SensorDeviceClass.REACTIVE_POWER, SensorStateClass.MEASUREMENT, "mdi:flash-outline"),
+    "reactivePower": ("Reactive Power", UnitOfReactivePower.VOLT_AMPERE_REACTIVE, SensorDeviceClass.REACTIVE_POWER, SensorStateClass.MEASUREMENT, "mdi:flash-outline"),
     "apparentPower": ("Apparent Power", UnitOfApparentPower.VOLT_AMPERE, SensorDeviceClass.APPARENT_POWER, SensorStateClass.MEASUREMENT, "mdi:flash-triangle"),
     "powerFactor": ("Power Factor", None, SensorDeviceClass.POWER_FACTOR, SensorStateClass.MEASUREMENT, "mdi:angle-acute"), # Unit is dimensionless
     "activeEnergyImported": ("Active Energy Imported", UnitOfEnergy.WATT_HOUR, SensorDeviceClass.ENERGY, SensorStateClass.TOTAL_INCREASING, "mdi:chart-histogram"),
@@ -58,7 +58,16 @@ async def async_setup_entry(
         # but sensors will just appear as unavailable until data arrives.
         # return
 
-    channel_configs = coordinator.data.get("channels", {}) # from /rest/get-channel
+    channel_configs = coordinator.data.get("channels", {}) # from /api/v1/ade7953/channel
+    # Normalize channel_configs to a dict keyed by index-string so downstream code can rely on .items()
+    if isinstance(channel_configs, list):
+        _LOGGER.debug("channel_configs is a list, normalizing to dict")
+        normalized = {}
+        for i, item in enumerate(channel_configs):
+            # item may itself be a dict with an 'index' field
+            key = str(item.get("index", i)) if isinstance(item, dict) else str(i)
+            normalized[key] = item
+        channel_configs = normalized
     # meter_data_list = coordinator.data.get("meter", []) # from /rest/meter
 
     sensors = []
@@ -180,6 +189,21 @@ class EnergyMeSensor(CoordinatorEntity, SensorEntity):
             return None
 
         meter_data_list = self.coordinator.data.get("meter", [])
+        # Normalize meter_data_list: accept dict (keyed by index) or list of items
+        if isinstance(meter_data_list, dict):
+            _LOGGER.debug("meter data is a dict, normalizing to list")
+            normalized = []
+            for k, v in meter_data_list.items():
+                try:
+                    idx = int(k)
+                except Exception:
+                    idx = None
+                # If v already has 'data', keep structure; else wrap
+                if isinstance(v, dict) and "data" in v:
+                    normalized.append({"index": idx if idx is not None else 0, "data": v.get("data")})
+                else:
+                    normalized.append({"index": idx if idx is not None else 0, "data": v})
+            meter_data_list = normalized
 
         # Find the data for our specific channel_index
         channel_data = None

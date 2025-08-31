@@ -2,17 +2,34 @@
     "config": {
         "step": {
             "user": {
-                "description": "If you need help with the configuration have a look here: https://github.com/jibrilsharafi/EnergyMe-Home",
+                "title": "Connect to EnergyMe",
+                "description": "Enter the hostname/IP address and credentials for your EnergyMe device. If you need help with the configuration have a look here: https://github.com/jibrilsharafi/EnergyMe-Home",
                 "data": {
+                    "host": "Host",
                     "username": "Username",
                     "password": "Password"
                 }
             }
         },
         "error": {
-            "auth": "Username/Password is wrong.",
-            "connection": "Unable to connect to the server.",
-            "unknown": "Unknown error occurred."
+            "cannot_connect": "Failed to connect to the EnergyMe device. Check the host and network.",
+            "cannot_connect_timeout": "Connection to the EnergyMe device timed out. Check if it's online and the host is correct.",
+            "cannot_connect_http": "Received an HTTP error from the EnergyMe device. Check logs for details.",
+            "invalid_auth": "Authentication failed. Check your username and password.",
+            "unknown": "An unknown error occurred."
+        },
+        "abort": {
+            "already_configured": "This EnergyMe device is already configured."
+        }
+    },
+    "options": {
+        "step": {
+            "init": {
+                "title": "EnergyMe Options",
+                "data": {
+                    "scan_interval": "Update interval (seconds)"
+                }
+            }
         }
     }
 }

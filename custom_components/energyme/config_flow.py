@@ -2,19 +2,22 @@
 import logging
 
 import requests
+from requests.auth import HTTPDigestAuth
 import voluptuous as vol
 
 from homeassistant import config_entries
 from homeassistant.core import callback
 from homeassistant.const import CONF_NAME  # If you want to allow naming the device
 
-from .const import DOMAIN, CONF_HOST, CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL  # Added CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
+from .const import DOMAIN, CONF_HOST, CONF_USERNAME, CONF_PASSWORD, CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL  # Added auth constants
 
 _LOGGER = logging.getLogger(__name__)
 
 DATA_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_HOST): str,
+        vol.Required(CONF_USERNAME): str,
+        vol.Required(CONF_PASSWORD): str,
         # vol.Optional(CONF_NAME, default="EnergyMe"): str, # Optional: allow user to name it
     }
 )
@@ -31,19 +34,29 @@ class EnergyMeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors = {}
         if user_input is not None:
             host = user_input[CONF_HOST]
+            username = user_input[CONF_USERNAME]
+            password = user_input[CONF_PASSWORD]
             try:
-                # Test connection - use /rest/is-alive
+                # Test connection - use /api/v1/health with digest auth
                 # We need to run this in an executor since requests is blocking
-                is_alive_url = f"http://{host}/rest/is-alive"
+                health_url = f"http://{host}/api/v1/health"
 
-                # Using hass.async_add_executor_job for synchronous requests
-                response = await self.hass.async_add_executor_job(
-                    requests.get, is_alive_url, {"timeout": 5}
-                )
+                # Using hass.async_add_executor_job for synchronous requests with digest auth
+                def make_request():
+                    return requests.get(
+                        health_url,
+                        auth=HTTPDigestAuth(username, password),
+                        timeout=5,
+                        headers={"accept": "application/json"}
+                    )
+
+                response = await self.hass.async_add_executor_job(make_request)
                 response.raise_for_status()  # Raise HTTPError for bad responses (4xx or 5xx)
 
-                # Check response content if necessary, e.g., response.json().get("message") == "True"
-                # For now, a 200 OK is sufficient proof of "alive"
+                # Check response content for the health endpoint
+                health_data = response.json()
+                if health_data.get("status") != "ok":
+                    _LOGGER.warning("Health check returned non-ok status: %s", health_data.get("status"))
 
                 # Set a unique ID for the config entry to prevent duplicates
                 # You could use a device MAC address or serial if available from an info endpoint
@@ -103,7 +116,7 @@ class EnergyMeOptionsFlowHandler(config_entries.OptionsFlow):
                 vol.Optional(
                     CONF_SCAN_INTERVAL,
                     default=current_scan_interval,
-                ): vol.All(vol.Coerce(int), vol.Range(min=5)),  # Ensure positive integer, min 5 seconds
+                ): vol.All(vol.Coerce(int), vol.Range(min=1)),  # Ensure positive integer, min 1 second
             }
         )
 

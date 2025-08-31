@@ -3,9 +3,11 @@
     "step": {
       "user": {
         "title": "Connect to EnergyMe",
-        "description": "Enter the hostname or IP address of your EnergyMe device.",
+        "description": "Enter the hostname/IP address and credentials for your EnergyMe device.",
         "data": {
-          "host": "Host"
+          "host": "Host",
+          "username": "Username",
+          "password": "Password"
         }
       }
     },
@@ -13,7 +15,7 @@
       "cannot_connect": "Failed to connect to the EnergyMe device. Check the host and network.",
       "cannot_connect_timeout": "Connection to the EnergyMe device timed out. Check if it's online and the host is correct.",
       "cannot_connect_http": "Received an HTTP error from the EnergyMe device. Check logs for details.",
-      "invalid_auth": "Authentication failed. (If applicable)",
+      "invalid_auth": "Authentication failed. Check your username and password.",
       "unknown": "An unknown error occurred."
     },
     "abort": {
