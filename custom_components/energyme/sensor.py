@@ -1,5 +1,6 @@
 """Platform for sensor integration."""
 import logging
+import dataclasses
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -27,20 +28,112 @@ _LOGGER = logging.getLogger(__name__)
 
 # Define a structure for your sensor types
 # (API Key, Friendly Name Suffix, Unit, Device Class, State Class, Icon (optional))
-SENSOR_TYPES_MAPPING = {
-    "voltage": ("Voltage", UnitOfElectricPotential.VOLT, SensorDeviceClass.VOLTAGE, SensorStateClass.MEASUREMENT, "mdi:sine-wave"),
-    "current": ("Current", UnitOfElectricCurrent.AMPERE, SensorDeviceClass.CURRENT, SensorStateClass.MEASUREMENT, "mdi:current-ac"),
-    "activePower": ("Active Power", UnitOfPower.WATT, SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, "mdi:flash"),
-    "reactivePower": ("Reactive Power", UnitOfReactivePower.VOLT_AMPERE_REACTIVE, SensorDeviceClass.REACTIVE_POWER, SensorStateClass.MEASUREMENT, "mdi:flash-outline"),
-    "apparentPower": ("Apparent Power", UnitOfApparentPower.VOLT_AMPERE, SensorDeviceClass.APPARENT_POWER, SensorStateClass.MEASUREMENT, "mdi:flash-triangle"),
-    "powerFactor": ("Power Factor", None, SensorDeviceClass.POWER_FACTOR, SensorStateClass.MEASUREMENT, "mdi:angle-acute"), # Unit is dimensionless
-    "activeEnergyImported": ("Active Energy Imported", UnitOfEnergy.WATT_HOUR, SensorDeviceClass.ENERGY, SensorStateClass.TOTAL_INCREASING, "mdi:chart-histogram"),
-    "activeEnergyExported": ("Active Energy Exported", UnitOfEnergy.WATT_HOUR, SensorDeviceClass.ENERGY, SensorStateClass.TOTAL_INCREASING, "mdi:chart-histogram-outline"), # Different icon for export
-    "reactiveEnergyImported": ("Reactive Energy Imported", "varh", None, SensorStateClass.TOTAL_INCREASING, "mdi:chart-scatter-plot"), # No specific device class, varh
-    "reactiveEnergyExported": ("Reactive Energy Exported", "varh", None, SensorStateClass.TOTAL_INCREASING, "mdi:chart-scatter-plot-hexbin"), # No specific device class, varh
-    "apparentEnergy": ("Apparent Energy", "VAh", None, SensorStateClass.TOTAL_INCREASING, "mdi:chart-areaspline"), # No specific device class, VAh
+SENSOR_DESCRIPTIONS: dict[str, SensorEntityDescription] = {
+    "voltage": SensorEntityDescription(
+        key="voltage",
+        name="Voltage",
+        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+        device_class=SensorDeviceClass.VOLTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:sine-wave",
+    ),
+    "current": SensorEntityDescription(
+        key="current",
+        name="Current",
+        native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
+        device_class=SensorDeviceClass.CURRENT,
+        state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:current-ac",
+    ),
+    "activePower": SensorEntityDescription(
+        key="activePower",
+        name="Active Power",
+        native_unit_of_measurement=UnitOfPower.WATT,
+        device_class=SensorDeviceClass.POWER,
+        state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:flash",
+    ),
+    "reactivePower": SensorEntityDescription(
+        key="reactivePower",
+        name="Reactive Power",
+        native_unit_of_measurement=UnitOfReactivePower.VOLT_AMPERE_REACTIVE,
+        device_class=SensorDeviceClass.REACTIVE_POWER,
+        state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:flash-outline",
+    ),
+    "apparentPower": SensorEntityDescription(
+        key="apparentPower",
+        name="Apparent Power",
+        native_unit_of_measurement=UnitOfApparentPower.VOLT_AMPERE,
+        device_class=SensorDeviceClass.APPARENT_POWER,
+        state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:flash-triangle",
+    ),
+    "powerFactor": SensorEntityDescription(
+        key="powerFactor",
+        name="Power Factor",
+        native_unit_of_measurement=None,
+        device_class=SensorDeviceClass.POWER_FACTOR,
+        state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:angle-acute",
+    ),
+    "activeEnergyImported": SensorEntityDescription(
+        key="activeEnergyImported",
+        name="Active Energy Imported",
+        native_unit_of_measurement=UnitOfEnergy.WATT_HOUR,
+        device_class=SensorDeviceClass.ENERGY,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        icon="mdi:chart-histogram",
+    ),
+    "activeEnergyExported": SensorEntityDescription(
+        key="activeEnergyExported",
+        name="Active Energy Exported",
+        native_unit_of_measurement=UnitOfEnergy.WATT_HOUR,
+        device_class=SensorDeviceClass.ENERGY,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        icon="mdi:chart-histogram-outline",
+    ),
+    "reactiveEnergyImported": SensorEntityDescription(
+        key="reactiveEnergyImported",
+        name="Reactive Energy Imported",
+        native_unit_of_measurement="varh",
+        device_class=None,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        icon="mdi:chart-scatter-plot",
+    ),
+    "reactiveEnergyExported": SensorEntityDescription(
+        key="reactiveEnergyExported",
+        name="Reactive Energy Exported",
+        native_unit_of_measurement="varh",
+        device_class=None,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        icon="mdi:chart-scatter-plot-hexbin",
+    ),
+    "apparentEnergy": SensorEntityDescription(
+        key="apparentEnergy",
+        name="Apparent Energy",
+        native_unit_of_measurement="VAh",
+        device_class=None,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        icon="mdi:chart-areaspline",
+    ),
 }
-DECIMALS = 2 # Adjusted for potentially finer values like power factor
+
+# Per-metric rounding
+DECIMALS_MAP: dict[str, int] = {
+    "voltage": 1,
+    "current": 3,
+    "activePower": 1,
+    "reactivePower": 1,
+    "apparentPower": 1,
+    "powerFactor": 3,
+    "activeEnergyImported": 0,
+    "activeEnergyExported": 0,
+    "reactiveEnergyImported": 0,
+    "reactiveEnergyExported": 0,
+    "apparentEnergy": 0,
+}
+DEFAULT_DECIMALS = 2
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -102,12 +195,9 @@ async def async_setup_entry(
         if channel_index in active_channel_labels:
             channel_label = active_channel_labels[channel_index]
 
-            # For each metric in SENSOR_TYPES_MAPPING, create a sensor
-            for api_key, (name_suffix, unit, dev_class, state_class, icon) in SENSOR_TYPES_MAPPING.items():
-                # Special handling for voltage: API might provide it once or per channel.
-                # Your API's /rest/meter shows voltage *inside each channel's data object*.
-                # So, create voltage sensor for each active channel.
-
+            # For each metric in SENSOR_DESCRIPTIONS, create a sensor
+            for api_key, description in SENSOR_DESCRIPTIONS.items():
+                # Create sensor using central SensorEntityDescription
                 sensors.append(
                     EnergyMeSensor(
                         coordinator=coordinator,
@@ -115,11 +205,7 @@ async def async_setup_entry(
                         channel_index=channel_index,
                         channel_label=channel_label,
                         api_key=api_key,
-                        name_suffix=name_suffix,
-                        unit=unit,
-                        device_class=dev_class,
-                        state_class=state_class,
-                        icon_override=icon,
+                        entity_description=description,
                     )
                 )
 
@@ -134,15 +220,11 @@ class EnergyMeSensor(CoordinatorEntity, SensorEntity):
     def __init__(
         self,
         coordinator: DataUpdateCoordinator,
-        entry_id: str, # For unique ID generation
+        entry_id: str,  # For unique ID generation
         channel_index: int,
         channel_label: str,
         api_key: str,
-        name_suffix: str,
-        unit: str | None,
-        device_class: SensorDeviceClass | None,
-        state_class: SensorStateClass | None,
-        icon_override: str | None = None,
+        entity_description: SensorEntityDescription,
     ) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator)
@@ -152,23 +234,26 @@ class EnergyMeSensor(CoordinatorEntity, SensorEntity):
         # Construct a unique ID: domain_entryid_channelX_apikey
         self._attr_unique_id = f"{DOMAIN}_{entry_id}_ch{channel_index}_{api_key}"
 
-        # Initialize self.entity_description with key and dynamic name
-        # The 'key' should be a stable identifier for this type of sensor description.
-        # 'api_key' (e.g., "voltage", "activePower") is a good candidate.
-        self.entity_description = SensorEntityDescription(
+        # Create a copy of the provided SensorEntityDescription with a channel-specific name.
+        # SensorEntityDescription is a frozen dataclass, so use dataclasses.replace.
+        self.entity_description = dataclasses.replace(
+            entity_description,
+            name=f"{channel_label} {entity_description.name}",
             key=api_key,
-            name=f"{channel_label} {name_suffix}"
         )
 
-        self._attr_native_unit_of_measurement = unit
-        self._attr_device_class = device_class
-        self._attr_state_class = state_class
-        if icon_override:
-            self._attr_icon = icon_override
-        elif unit == UnitOfEnergy.WATT_HOUR: # Default energy icon if not overridden
-             self._attr_icon = "mdi:chart-bar"
-        elif unit == UnitOfPower.WATT: # Default power icon
-             self._attr_icon = "mdi:flash"
+        # Apply common attributes from the description
+        self._attr_native_unit_of_measurement = entity_description.native_unit_of_measurement
+        self._attr_device_class = entity_description.device_class
+        self._attr_state_class = entity_description.state_class
+        if entity_description.icon:
+            self._attr_icon = entity_description.icon
+        else:
+            unit = entity_description.native_unit_of_measurement
+            if unit == UnitOfEnergy.WATT_HOUR:  # Default energy icon if not provided
+                self._attr_icon = "mdi:chart-bar"
+            elif unit == UnitOfPower.WATT:  # Default power icon
+                self._attr_icon = "mdi:flash"
 
         # Device Info: Link all sensors to a single device entry
         self._attr_device_info = {
@@ -215,7 +300,8 @@ class EnergyMeSensor(CoordinatorEntity, SensorEntity):
         if channel_data and self._api_key in channel_data:
             try:
                 value = float(channel_data[self._api_key])
-                return round(value, DECIMALS)
+                decimals = DECIMALS_MAP.get(self._api_key, DEFAULT_DECIMALS)
+                return round(value, decimals)
             except (ValueError, TypeError):
                 _LOGGER.warning(
                     "Invalid value for %s on channel %s: %s",
