@@ -16,7 +16,7 @@ from .const import (
     CONF_USERNAME,
     CONF_PASSWORD,
     DEFAULT_SCAN_INTERVAL,
-    CONF_SCAN_INTERVAL,
+    CONF_SCAN_INTERVAL
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -35,8 +35,9 @@ async def async_update_options_listener(hass: HomeAssistant, entry: ConfigEntry)
         new_scan_interval,
     )
     coordinator.update_interval = timedelta(seconds=new_scan_interval)
-    # Optionally, you might want to request a refresh if the interval change should trigger an immediate update
-    # await coordinator.async_request_refresh()
+
+    # Reload the entry to update sensor selection
+    await hass.config_entries.async_reload(entry.entry_id)
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -87,9 +88,28 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             raw_meter_data.raise_for_status()
             meter_data = raw_meter_data.json()
 
+            # Fetch device info for better device identification
+            device_info_url = f"http://{host}/api/v1/system/info"
+
+            def get_device_info():
+                return requests.get(
+                    device_info_url,
+                    auth=auth,
+                    timeout=5,
+                    headers={"accept": "application/json"}
+                )
+
+            try:
+                raw_device_info = await hass.async_add_executor_job(get_device_info)
+                raw_device_info.raise_for_status()
+                device_info = raw_device_info.json()
+            except Exception as err:
+                _LOGGER.warning("Could not fetch device info: %s", err)
+                device_info = {}
+
             # Combine or structure as needed for sensors
-            # For now, just return both; sensors will pick what they need
-            return {"channels": channel_config, "meter": meter_data}
+            # Include device info for potential use in device registry
+            return {"channels": channel_config, "meter": meter_data, "device_info": device_info}
 
         except requests.exceptions.Timeout:
             _LOGGER.error("Timeout connecting to EnergyMe device at %s", host)

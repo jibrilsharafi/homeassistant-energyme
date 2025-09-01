@@ -22,9 +22,15 @@ from homeassistant.const import (
 )
 
 
-from .const import DOMAIN, CONF_HOST
+from .const import DOMAIN, CONF_HOST, CONF_SENSORS, DEFAULT_SENSORS, SYSTEM_SENSORS
 
 _LOGGER = logging.getLogger(__name__)
+
+# TODO: fix Configure button (returns Error Config flow could not be loaded: 500 Internal Server Error Server got itself in trouble)
+# TODO: add auto discovery via mDNS
+# TODO: test first default credentials (and in any case only ask for the password, the username is always the same)
+# TODO: split the sensors in meter sensors and system sensors
+# TODO: sensors should be disabled by default except necessary ones
 
 # Define a structure for your sensor types
 # (API Key, Friendly Name Suffix, Unit, Device Class, State Class, Icon (optional))
@@ -119,6 +125,50 @@ SENSOR_DESCRIPTIONS: dict[str, SensorEntityDescription] = {
     ),
 }
 
+# System information sensors (not per-channel)
+SYSTEM_SENSOR_DESCRIPTIONS: dict[str, SensorEntityDescription] = {
+    "firmware_version": SensorEntityDescription(
+        key="firmware_version",
+        name="Firmware Version",
+        native_unit_of_measurement=None,
+        device_class=None,
+        state_class=None,
+        icon="mdi:chip",
+    ),
+    "device_id": SensorEntityDescription(
+        key="device_id",
+        name="Device ID",
+        native_unit_of_measurement=None,
+        device_class=None,
+        state_class=None,
+        icon="mdi:identifier",
+    ),
+    "temperature": SensorEntityDescription(
+        key="temperature",
+        name="Temperature",
+        native_unit_of_measurement="°C",
+        device_class=SensorDeviceClass.TEMPERATURE,
+        state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:thermometer",
+    ),
+    "wifi_rssi": SensorEntityDescription(
+        key="wifi_rssi",
+        name="WiFi Signal Strength",
+        native_unit_of_measurement="dBm",
+        device_class=SensorDeviceClass.SIGNAL_STRENGTH,
+        state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:wifi-strength-2",
+    ),
+    "heap_free_percentage": SensorEntityDescription(
+        key="heap_free_percentage",
+        name="Heap Memory Free",
+        native_unit_of_measurement="%",
+        device_class=None,
+        state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:memory",
+    ),
+}
+
 # Per-metric rounding
 DECIMALS_MAP: dict[str, int] = {
     "voltage": 1,
@@ -143,6 +193,9 @@ async def async_setup_entry(
     """Set up the sensor platform."""
     coordinator: DataUpdateCoordinator = hass.data[DOMAIN][entry.entry_id]
 
+    # Get enabled sensors from options, fallback to defaults
+    enabled_sensors = entry.options.get(CONF_SENSORS, DEFAULT_SENSORS)
+
     # Wait for the coordinator to have data
     if not coordinator.last_update_success or not coordinator.data:
         # This typically shouldn't happen if async_config_entry_first_refresh was awaited
@@ -152,6 +205,11 @@ async def async_setup_entry(
         # return
 
     channel_configs = coordinator.data.get("channels", {}) # from /api/v1/ade7953/channel
+    # Handle the response structure from the API
+    if isinstance(channel_configs, dict) and "channels" in channel_configs:
+        # API returns {"channels": [...]}
+        channel_configs = channel_configs["channels"]
+
     # Normalize channel_configs to a dict keyed by index-string so downstream code can rely on .items()
     if isinstance(channel_configs, list):
         _LOGGER.debug("channel_configs is a list, normalizing to dict")
@@ -161,12 +219,23 @@ async def async_setup_entry(
             key = str(item.get("index", i)) if isinstance(item, dict) else str(i)
             normalized[key] = item
         channel_configs = normalized
-    # meter_data_list = coordinator.data.get("meter", []) # from /rest/meter
 
     sensors = []
 
-    # The /rest/get-channel provides channel activity and labels
-    # The /rest/meter provides the actual data, indexed
+    # Add system sensors (not channel-specific) - always enabled
+    for api_key, description in SYSTEM_SENSOR_DESCRIPTIONS.items():
+        if api_key in SYSTEM_SENSORS:  # Only create defined system sensors
+            sensors.append(
+                EnergyMeSystemSensor(
+                    coordinator=coordinator,
+                    entry_id=entry.entry_id,
+                    api_key=api_key,
+                    entity_description=description,
+                )
+            )
+
+    # The /api/v1/ade7953/channel endpoint provides channel activity and labels
+    # The /api/v1/ade7953/meter-values endpoint provides the actual data
 
     # Create a map of index to channel label from channel_configs for active channels
     active_channel_labels = {}
@@ -183,31 +252,32 @@ async def async_setup_entry(
     # Assuming meter_data_list is like:
     # [ {"index": 0, "label": "Main", "data": {"voltage": 230, ...}}, ... ]
 
-    # Let's assume for now that the number of items in meter_data_list is fixed (e.g., 17)
-    # and we only light up sensors for those whose index is in active_channel_labels.
+    # EnergyMe device supports up to 17 channels
+    # Only create sensors for active channels
 
     # Instead of iterating meter_data_list (which changes), iterate potential channels
     # and active_channel_labels.
 
-    max_channels_possible = 17 # As per your original TOTAL_CHANNELS
+    max_channels_possible = 17  # EnergyMe device maximum channel count
 
     for channel_index in range(max_channels_possible):
         if channel_index in active_channel_labels:
             channel_label = active_channel_labels[channel_index]
 
-            # For each metric in SENSOR_DESCRIPTIONS, create a sensor
+            # For each enabled metric in SENSOR_DESCRIPTIONS, create a sensor
             for api_key, description in SENSOR_DESCRIPTIONS.items():
-                # Create sensor using central SensorEntityDescription
-                sensors.append(
-                    EnergyMeSensor(
-                        coordinator=coordinator,
-                        entry_id=entry.entry_id,
-                        channel_index=channel_index,
-                        channel_label=channel_label,
-                        api_key=api_key,
-                        entity_description=description,
+                if api_key in enabled_sensors:  # Only create sensors for enabled ones
+                    # Create sensor using central SensorEntityDescription
+                    sensors.append(
+                        EnergyMeSensor(
+                            coordinator=coordinator,
+                            entry_id=entry.entry_id,
+                            channel_index=channel_index,
+                            channel_label=channel_label,
+                            api_key=api_key,
+                            entity_description=description,
+                        )
                     )
-                )
 
     async_add_entities(sensors)
 
@@ -256,16 +326,26 @@ class EnergyMeSensor(CoordinatorEntity, SensorEntity):
                 self._attr_icon = "mdi:flash"
 
         # Device Info: Link all sensors to a single device entry
+        device_data = coordinator.data.get("device_info", {}) if coordinator.data else {}
+        # Extract device ID and firmware version from system info structure
+        static_info = device_data.get("static", {})
+        device_id = static_info.get("device", {}).get("id") or entry_id
+        firmware_version = static_info.get("firmware", {}).get("buildVersion")
+
+        # Get host from config entry for a cleaner device name
+        host = coordinator.hass.data[DOMAIN][entry_id].config_entry.data.get(CONF_HOST)
+        device_name = f"EnergyMe {host.split('.')[-1] if '.' in host else host}"
+
         self._attr_device_info = {
-            "identifiers": {(DOMAIN, entry_id)}, # Matches unique_id of config_entry
-            "name": f"EnergyMe ({coordinator.hass.data[DOMAIN][entry_id].config_entry.data.get(CONF_HOST)})", # Get host from entry data
+            "identifiers": {(DOMAIN, device_id)}, # Use actual device ID if available
+            "name": device_name,
             "manufacturer": "Jibril Sharafi",
             "model": "EnergyMe - Home",
-            # "sw_version": coordinator.data.get("firmware_version"), # If available in coordinator data
         }
-        # Ensure coordinator.data is not None before accessing
-        # Firmware version might be fetched from /rest/device-info and added to coordinator data
-        # For now, keeping it simple.
+
+        # Add firmware version if available
+        if firmware_version:
+            self._attr_device_info["sw_version"] = firmware_version
 
     @property
     def native_value(self) -> float | None:
@@ -326,3 +406,90 @@ class EnergyMeSensor(CoordinatorEntity, SensorEntity):
 
     # The name property is now handled by self.entity_description.name and _attr_has_entity_name = True
     # The icon, unit_of_measurement, device_class, state_class are set as _attr_ properties.
+
+
+class EnergyMeSystemSensor(CoordinatorEntity, SensorEntity):
+    """Representation of an EnergyMe System Sensor."""
+
+    _attr_has_entity_name = True
+
+    def __init__(
+        self,
+        coordinator: DataUpdateCoordinator,
+        entry_id: str,
+        api_key: str,
+        entity_description: SensorEntityDescription,
+    ) -> None:
+        """Initialize the system sensor."""
+        super().__init__(coordinator)
+        self._api_key = api_key
+
+        # Construct a unique ID: domain_entryid_system_apikey
+        self._attr_unique_id = f"{DOMAIN}_{entry_id}_system_{api_key}"
+
+        # Use the provided entity description
+        self.entity_description = entity_description
+
+        # Device Info: Link system sensor to the same device as channel sensors
+        if coordinator.data:
+            device_data = coordinator.data.get("device_info", {})
+            static_info = device_data.get("static", {})
+            device_id = static_info.get("device", {}).get("id") or entry_id
+            firmware_version = static_info.get("firmware", {}).get("buildVersion")
+
+            # Get host from config entry for device name
+            host = coordinator.hass.data[DOMAIN][entry_id].config_entry.data.get(CONF_HOST)
+            device_name = f"EnergyMe {host.split('.')[-1] if '.' in host else host}"
+
+            self._attr_device_info = {
+                "identifiers": {(DOMAIN, device_id)},
+                "name": device_name,
+                "manufacturer": "Jibril Sharafi",
+                "model": "EnergyMe - Home",
+            }
+
+            # Add firmware version if available
+            if firmware_version:
+                self._attr_device_info["sw_version"] = firmware_version
+
+    @property
+    def native_value(self):
+        """Return the state of the sensor based on system info."""
+        if not self.coordinator.data:
+            return None
+
+        device_info = self.coordinator.data.get("device_info", {})
+        if not device_info:
+            return None
+
+        # Extract values based on the API key
+        if self._api_key == "firmware_version":
+            return device_info.get("static", {}).get("firmware", {}).get("buildVersion")
+        elif self._api_key == "device_id":
+            return device_info.get("static", {}).get("device", {}).get("id")
+        elif self._api_key == "temperature":
+            temp_value = device_info.get("dynamic", {}).get("performance", {}).get("temperatureCelsius")
+            if temp_value is not None:
+                try:
+                    return round(float(temp_value), 1)
+                except (ValueError, TypeError):
+                    return temp_value
+            return temp_value
+        elif self._api_key == "wifi_rssi":
+            return device_info.get("dynamic", {}).get("network", {}).get("wifiRssi")
+        elif self._api_key == "heap_free_percentage":
+            heap_info = device_info.get("dynamic", {}).get("memory", {}).get("heap", {})
+            free_percentage = heap_info.get("freePercentage")
+            if free_percentage is not None:
+                try:
+                    return round(float(free_percentage), 1)
+                except (ValueError, TypeError):
+                    return free_percentage
+            return free_percentage
+
+        return None
+
+    @property
+    def available(self) -> bool:
+        """Return if entity is available."""
+        return self.coordinator.last_update_success and self.coordinator.data is not None

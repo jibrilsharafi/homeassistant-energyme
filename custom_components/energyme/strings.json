@@ -26,8 +26,13 @@
     "step": {
       "init": {
         "title": "EnergyMe Options",
+        "description": "Configure update frequency and which sensors to enable.",
         "data": {
-          "scan_interval": "Update interval (seconds)"
+          "scan_interval": "Update interval (seconds)",
+          "sensors": "Enabled sensors"
+        },
+        "data_description": {
+          "sensors": "Select which sensor types to enable. At least one sensor must be selected."
         }
       }
     }

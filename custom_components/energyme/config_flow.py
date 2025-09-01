@@ -9,7 +9,7 @@ from homeassistant import config_entries
 from homeassistant.core import callback
 from homeassistant.const import CONF_NAME  # If you want to allow naming the device
 
-from .const import DOMAIN, CONF_HOST, CONF_USERNAME, CONF_PASSWORD, CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL  # Added auth constants
+from .const import DOMAIN, CONF_HOST, CONF_USERNAME, CONF_PASSWORD, CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL, CONF_SENSORS, DEFAULT_SENSORS  # Added auth constants
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -110,6 +110,24 @@ class EnergyMeOptionsFlowHandler(config_entries.OptionsFlow):
         current_scan_interval = self.config_entry.options.get(
             CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
         )
+        current_sensors = self.config_entry.options.get(
+            CONF_SENSORS, DEFAULT_SENSORS
+        )
+
+        # Available sensor options with friendly names
+        sensor_options = {
+            "voltage": "Voltage (V)",
+            "current": "Current (A)",
+            "activePower": "Active Power (W)",
+            "reactivePower": "Reactive Power (var)",
+            "apparentPower": "Apparent Power (VA)",
+            "powerFactor": "Power Factor",
+            "activeEnergyImported": "Active Energy Imported (Wh)",
+            "activeEnergyExported": "Active Energy Exported (Wh)",
+            "reactiveEnergyImported": "Reactive Energy Imported (varh)",
+            "reactiveEnergyExported": "Reactive Energy Exported (varh)",
+            "apparentEnergy": "Apparent Energy (VAh)",
+        }
 
         options_schema = vol.Schema(
             {
@@ -117,10 +135,20 @@ class EnergyMeOptionsFlowHandler(config_entries.OptionsFlow):
                     CONF_SCAN_INTERVAL,
                     default=current_scan_interval,
                 ): vol.All(vol.Coerce(int), vol.Range(min=1)),  # Ensure positive integer, min 1 second
+                vol.Optional(
+                    CONF_SENSORS,
+                    default=current_sensors,
+                ): vol.All(
+                    [vol.In(list(sensor_options.keys()))],
+                    vol.Length(min=1)  # At least one sensor must be selected
+                ),
             }
         )
 
         return self.async_show_form(
             step_id="init",
             data_schema=options_schema,
+            description_placeholders={
+                "sensor_help": "Select which sensors to enable. At least one sensor must be selected."
+            }
         )
