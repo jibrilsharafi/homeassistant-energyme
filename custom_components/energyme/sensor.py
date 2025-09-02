@@ -13,6 +13,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, CoordinatorEntity
+from homeassistant.helpers import device_registry as dr
 
 from homeassistant.const import (
     UnitOfEnergy, # For Wh/kWh
@@ -28,7 +29,7 @@ from .const import DOMAIN, CONF_HOST, CONF_SENSORS, DEFAULT_SENSORS, SYSTEM_SENS
 
 _LOGGER = logging.getLogger(__name__)
 
-# TODO: split the sensors in meter sensors and system sensors
+# TODO: better name (using device id maybe)
 # TODO: add auto discovery via mDNS
 # TODO: test first default credentials (and in any case only ask for the password, the username is always the same)
 # TODO: clean comments and docs
@@ -229,7 +230,39 @@ async def async_setup_entry(
 
     sensors = []
 
-    # Add system sensors (not channel-specific) - always enabled
+    # Create the main parent device in the device registry
+    device_registry = dr.async_get(hass)
+
+    # Get device info from system coordinator for main device
+    device_data = system_coordinator.data.get("device_info", {}) if system_coordinator.data else {}
+    static_info = device_data.get("static", {})
+    base_device_id = static_info.get("device", {}).get("id") or entry.entry_id
+    firmware_version = static_info.get("firmware", {}).get("buildVersion")
+
+    # Get host from config entry
+    coordinators = hass.data[DOMAIN][entry.entry_id]
+    config_entry = coordinators["config_entry"]
+    host = config_entry.data.get(CONF_HOST)
+    main_device_name = f"EnergyMe {host.split('.')[-1] if '.' in host else host}"
+
+    # Create the main parent device
+    # Note: async_get_or_create() automatically registers the device in HA's device registry
+    # as a side effect. The return value (main_device) contains the device object, but the
+    # actual registration happens when this function is called. We don't need to use the
+    # return value further - the device is now available in the registry.
+    main_device = device_registry.async_get_or_create(
+        config_entry_id=entry.entry_id,
+        identifiers={(DOMAIN, base_device_id)},
+        name=main_device_name,
+        manufacturer="Jibril Sharafi",
+        model="EnergyMe - Home",
+        sw_version=firmware_version,
+    )
+
+    # Log that main device was created
+    _LOGGER.debug("Created main device: %s with ID: %s", main_device.name, main_device.id)
+
+    # Add system sensors to the main device (not channel-specific) - always enabled
     for api_key, description in SYSTEM_SENSOR_DESCRIPTIONS.items():
         if api_key in SYSTEM_SENSORS:  # Only create defined system sensors
             sensors.append(
@@ -238,6 +271,7 @@ async def async_setup_entry(
                     entry_id=entry.entry_id,
                     api_key=api_key,
                     entity_description=description,
+                    main_device_id=base_device_id,  # Pass main device ID
                 )
             )
 
@@ -265,6 +299,9 @@ async def async_setup_entry(
     # Instead of iterating meter_data_list (which changes), iterate potential channels
     # and active_channel_labels.
 
+    # Create sensors for each active channel
+    # Each channel gets its own device that links to the main device via "via_device"
+    # This creates a device hierarchy: Main Device -> Channel Devices -> Sensors
     max_channels_possible = 17  # EnergyMe device maximum channel count
 
     for channel_index in range(max_channels_possible):
@@ -275,6 +312,8 @@ async def async_setup_entry(
             for api_key, description in SENSOR_DESCRIPTIONS.items():
                 if api_key in enabled_sensors:  # Only create sensors for enabled ones
                     # Create sensor using central SensorEntityDescription
+                    # Each sensor's device_info will create a separate channel device
+                    # that automatically links to the main device via "via_device"
                     sensors.append(
                         EnergyMeSensor(
                             coordinator=meter_coordinator,  # Use meter coordinator
@@ -311,11 +350,11 @@ class EnergyMeSensor(CoordinatorEntity, SensorEntity):
         # Construct a unique ID: domain_entryid_channelX_apikey
         self._attr_unique_id = f"{DOMAIN}_{entry_id}_ch{channel_index}_{api_key}"
 
-        # Create a copy of the provided SensorEntityDescription with a channel-specific name.
+        # Create a copy of the provided SensorEntityDescription with simpler name since device name includes channel.
         # SensorEntityDescription is a frozen dataclass, so use dataclasses.replace.
         self.entity_description = dataclasses.replace(
             entity_description,
-            name=f"{channel_label} {entity_description.name}",
+            name=entity_description.name,  # Just the sensor name, not channel + sensor name
             key=api_key,
         )
 
@@ -332,7 +371,10 @@ class EnergyMeSensor(CoordinatorEntity, SensorEntity):
             elif unit == UnitOfPower.WATT:  # Default power icon
                 self._attr_icon = "mdi:flash"
 
-        # Device Info: Link all meter sensors to a single "Meter" device
+        # Device Info: Create separate device for each channel
+        # This creates the device hierarchy: Main Device -> Channel Devices -> Sensors
+        # The "via_device" parameter automatically links this channel device to the main device
+
         # Get device info from system coordinator
         coordinators = coordinator.hass.data[DOMAIN][entry_id]
         system_coordinator = coordinators["system_coordinator"]
@@ -346,16 +388,20 @@ class EnergyMeSensor(CoordinatorEntity, SensorEntity):
         # Get host from config entry for a cleaner device name
         config_entry = coordinators["config_entry"]
         host = config_entry.data.get(CONF_HOST)
-        base_device_name = f"EnergyMe {host.split('.')[-1] if '.' in host else host}"
 
+        # Create unique device for this channel
+        channel_device_id = f"{base_device_id}_ch{channel_index}"
+        device_name = f"EnergyMe {host.split('.')[-1] if '.' in host else host} - {channel_label}"
+
+        # The device_info with "via_device" creates the parent-child relationship
+        # HomeAssistant automatically handles the device creation and linking
         self._attr_device_info = {
-            "identifiers": {(DOMAIN, base_device_id)},
-            "name": base_device_name,
+            "identifiers": {(DOMAIN, channel_device_id)},
+            "name": device_name,
             "manufacturer": "Jibril Sharafi",
-            "model": "EnergyMe - Home",
-        }
-
-        # Add firmware version if available
+            "model": f"EnergyMe - {channel_label}",
+            "via_device": (DOMAIN, base_device_id),  # This links to the main device created above
+        }        # Add firmware version if available
         if firmware_version:
             self._attr_device_info["sw_version"] = firmware_version
 
@@ -431,10 +477,12 @@ class EnergyMeSystemSensor(CoordinatorEntity, SensorEntity):
         entry_id: str,
         api_key: str,
         entity_description: SensorEntityDescription,
+        main_device_id: str,
     ) -> None:
         """Initialize the system sensor."""
         super().__init__(coordinator)
         self._api_key = api_key
+        self._main_device_id = main_device_id
 
         # Construct a unique ID: domain_entryid_system_apikey
         self._attr_unique_id = f"{DOMAIN}_{entry_id}_system_{api_key}"
@@ -442,22 +490,24 @@ class EnergyMeSystemSensor(CoordinatorEntity, SensorEntity):
         # Use the provided entity description
         self.entity_description = entity_description
 
-        # Device Info: Link system sensor to a separate "System" device
+        # Device Info: Link system sensor to the main device
+        # System sensors (temperature, WiFi, memory, etc.) belong directly to the main device
+        # They use the same identifiers as the main device to attach to it
         if coordinator.data:
             device_data = coordinator.data.get("device_info", {})
             static_info = device_data.get("static", {})
-            base_device_id = static_info.get("device", {}).get("id") or entry_id
             firmware_version = static_info.get("firmware", {}).get("buildVersion")
 
             # Get host from config entry for device name
             coordinators = coordinator.hass.data[DOMAIN][entry_id]
             config_entry = coordinators["config_entry"]
             host = config_entry.data.get(CONF_HOST)
-            base_device_name = f"EnergyMe {host.split('.')[-1] if '.' in host else host}"
+            device_name = f"EnergyMe {host.split('.')[-1] if '.' in host else host}"
 
+            # Using the same identifiers as the main device links these sensors to it
             self._attr_device_info = {
-                "identifiers": {(DOMAIN, base_device_id)},
-                "name": base_device_name,
+                "identifiers": {(DOMAIN, self._main_device_id)},
+                "name": device_name,
                 "manufacturer": "Jibril Sharafi",
                 "model": "EnergyMe - Home",
             }
