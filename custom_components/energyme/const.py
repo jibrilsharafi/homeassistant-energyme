@@ -12,8 +12,8 @@ CONF_SENSORS = "sensors"
 DEFAULT_SENSORS = [
     "voltage",
     "activePower",
-    "activeEnergyImported",
-    "activeEnergyExported",
+    "powerFactor",
+    "activeEnergyImported"
 ]
 
 # System sensors are always created regardless of sensor selection

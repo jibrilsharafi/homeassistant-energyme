@@ -29,7 +29,6 @@ _LOGGER = logging.getLogger(__name__)
 # TODO: add auto discovery via mDNS
 # TODO: test first default credentials (and in any case only ask for the password, the username is always the same)
 # TODO: split the sensors in meter sensors and system sensors
-# TODO: sensors should be disabled by default except necessary ones
 # TODO: clean comments and docs
 
 # Define a structure for your sensor types
