@@ -289,7 +289,7 @@ def ade7953_register():
 def get_meter_values():
     """Get real-time meter values."""
     index = request.args.get('index')
-    
+
     def get_single_meter_values(channel_index):
         """Generate meter values for a single channel."""
         return {
@@ -305,7 +305,7 @@ def get_meter_values():
             "reactiveEnergyExported": 5.67 + (channel_index * 0.5),
             "apparentEnergy": 1235.67 + (channel_index * 100.1)
         }
-    
+
     if index is not None:
         # Return data for a specific channel
         channel_index = int(index)
@@ -314,7 +314,7 @@ def get_meter_values():
         # Return data for all active channels, following the C++ structure
         result = []
         CHANNEL_COUNT = 17  # Maximum number of channels
-        
+
         for i in range(CHANNEL_COUNT):
             # Simulate some channels being active and having valid measurements
             # For testing, let's make channels 0-2 active
@@ -326,7 +326,7 @@ def get_meter_values():
                     "data": get_single_meter_values(i)
                 }
                 result.append(channel_data)
-        
+
         return jsonify(result)
 
 

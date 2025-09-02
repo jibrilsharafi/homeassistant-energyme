@@ -8,10 +8,12 @@ from homeassistant.components.sensor import (
     SensorEntityDescription,  # Add this import
     SensorStateClass,
 )
+from homeassistant.helpers.entity import EntityCategory
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, CoordinatorEntity
+
 from homeassistant.const import (
     UnitOfEnergy, # For Wh/kWh
     UnitOfPower, # For W/kW
@@ -26,9 +28,9 @@ from .const import DOMAIN, CONF_HOST, CONF_SENSORS, DEFAULT_SENSORS, SYSTEM_SENS
 
 _LOGGER = logging.getLogger(__name__)
 
+# TODO: split the sensors in meter sensors and system sensors
 # TODO: add auto discovery via mDNS
 # TODO: test first default credentials (and in any case only ask for the password, the username is always the same)
-# TODO: split the sensors in meter sensors and system sensors
 # TODO: clean comments and docs
 
 # Define a structure for your sensor types
@@ -133,6 +135,7 @@ SYSTEM_SENSOR_DESCRIPTIONS: dict[str, SensorEntityDescription] = {
         device_class=None,
         state_class=None,
         icon="mdi:chip",
+        entity_category=EntityCategory.DIAGNOSTIC,
     ),
     "device_id": SensorEntityDescription(
         key="device_id",
@@ -141,6 +144,7 @@ SYSTEM_SENSOR_DESCRIPTIONS: dict[str, SensorEntityDescription] = {
         device_class=None,
         state_class=None,
         icon="mdi:identifier",
+        entity_category=EntityCategory.DIAGNOSTIC,
     ),
     "temperature": SensorEntityDescription(
         key="temperature",
@@ -149,6 +153,7 @@ SYSTEM_SENSOR_DESCRIPTIONS: dict[str, SensorEntityDescription] = {
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
         icon="mdi:thermometer",
+        entity_category=EntityCategory.DIAGNOSTIC,
     ),
     "wifi_rssi": SensorEntityDescription(
         key="wifi_rssi",
@@ -157,6 +162,7 @@ SYSTEM_SENSOR_DESCRIPTIONS: dict[str, SensorEntityDescription] = {
         device_class=SensorDeviceClass.SIGNAL_STRENGTH,
         state_class=SensorStateClass.MEASUREMENT,
         icon="mdi:wifi-strength-2",
+        entity_category=EntityCategory.DIAGNOSTIC,
     ),
     "heap_free_percentage": SensorEntityDescription(
         key="heap_free_percentage",
@@ -165,6 +171,7 @@ SYSTEM_SENSOR_DESCRIPTIONS: dict[str, SensorEntityDescription] = {
         device_class=None,
         state_class=SensorStateClass.MEASUREMENT,
         icon="mdi:memory",
+        entity_category=EntityCategory.DIAGNOSTIC,
     ),
 }
 
@@ -190,20 +197,21 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the sensor platform."""
-    coordinator: DataUpdateCoordinator = hass.data[DOMAIN][entry.entry_id]
+    coordinators = hass.data[DOMAIN][entry.entry_id]
+    meter_coordinator: DataUpdateCoordinator = coordinators["meter_coordinator"]
+    system_coordinator: DataUpdateCoordinator = coordinators["system_coordinator"]
 
     # Get enabled sensors from options, fallback to defaults
     enabled_sensors = entry.options.get(CONF_SENSORS, DEFAULT_SENSORS)
 
-    # Wait for the coordinator to have data
-    if not coordinator.last_update_success or not coordinator.data:
-        # This typically shouldn't happen if async_config_entry_first_refresh was awaited
-        _LOGGER.warning("Coordinator has no data, deferring sensor setup")
-        # You might raise ConfigEntryNotReady here if it's critical,
-        # but sensors will just appear as unavailable until data arrives.
-        # return
+    # Wait for the coordinators to have data
+    if not meter_coordinator.last_update_success or not meter_coordinator.data:
+        _LOGGER.warning("Meter coordinator has no data, deferring sensor setup")
 
-    channel_configs = coordinator.data.get("channels", {}) # from /api/v1/ade7953/channel
+    if not system_coordinator.last_update_success or not system_coordinator.data:
+        _LOGGER.warning("System coordinator has no data, deferring sensor setup")
+
+    channel_configs = meter_coordinator.data.get("channels", {}) if meter_coordinator.data else {}
     # Handle the response structure from the API
     if isinstance(channel_configs, dict) and "channels" in channel_configs:
         # API returns {"channels": [...]}
@@ -226,7 +234,7 @@ async def async_setup_entry(
         if api_key in SYSTEM_SENSORS:  # Only create defined system sensors
             sensors.append(
                 EnergyMeSystemSensor(
-                    coordinator=coordinator,
+                    coordinator=system_coordinator,  # Use system coordinator
                     entry_id=entry.entry_id,
                     api_key=api_key,
                     entity_description=description,
@@ -269,7 +277,7 @@ async def async_setup_entry(
                     # Create sensor using central SensorEntityDescription
                     sensors.append(
                         EnergyMeSensor(
-                            coordinator=coordinator,
+                            coordinator=meter_coordinator,  # Use meter coordinator
                             entry_id=entry.entry_id,
                             channel_index=channel_index,
                             channel_label=channel_label,
@@ -324,20 +332,25 @@ class EnergyMeSensor(CoordinatorEntity, SensorEntity):
             elif unit == UnitOfPower.WATT:  # Default power icon
                 self._attr_icon = "mdi:flash"
 
-        # Device Info: Link all sensors to a single device entry
-        device_data = coordinator.data.get("device_info", {}) if coordinator.data else {}
+        # Device Info: Link all meter sensors to a single "Meter" device
+        # Get device info from system coordinator
+        coordinators = coordinator.hass.data[DOMAIN][entry_id]
+        system_coordinator = coordinators["system_coordinator"]
+        device_data = system_coordinator.data.get("device_info", {}) if system_coordinator.data else {}
+
         # Extract device ID and firmware version from system info structure
         static_info = device_data.get("static", {})
-        device_id = static_info.get("device", {}).get("id") or entry_id
+        base_device_id = static_info.get("device", {}).get("id") or entry_id
         firmware_version = static_info.get("firmware", {}).get("buildVersion")
 
         # Get host from config entry for a cleaner device name
-        host = coordinator.hass.data[DOMAIN][entry_id].config_entry.data.get(CONF_HOST)
-        device_name = f"EnergyMe {host.split('.')[-1] if '.' in host else host}"
+        config_entry = coordinators["config_entry"]
+        host = config_entry.data.get(CONF_HOST)
+        base_device_name = f"EnergyMe {host.split('.')[-1] if '.' in host else host}"
 
         self._attr_device_info = {
-            "identifiers": {(DOMAIN, device_id)}, # Use actual device ID if available
-            "name": device_name,
+            "identifiers": {(DOMAIN, base_device_id)},
+            "name": base_device_name,
             "manufacturer": "Jibril Sharafi",
             "model": "EnergyMe - Home",
         }
@@ -429,20 +442,22 @@ class EnergyMeSystemSensor(CoordinatorEntity, SensorEntity):
         # Use the provided entity description
         self.entity_description = entity_description
 
-        # Device Info: Link system sensor to the same device as channel sensors
+        # Device Info: Link system sensor to a separate "System" device
         if coordinator.data:
             device_data = coordinator.data.get("device_info", {})
             static_info = device_data.get("static", {})
-            device_id = static_info.get("device", {}).get("id") or entry_id
+            base_device_id = static_info.get("device", {}).get("id") or entry_id
             firmware_version = static_info.get("firmware", {}).get("buildVersion")
 
             # Get host from config entry for device name
-            host = coordinator.hass.data[DOMAIN][entry_id].config_entry.data.get(CONF_HOST)
-            device_name = f"EnergyMe {host.split('.')[-1] if '.' in host else host}"
+            coordinators = coordinator.hass.data[DOMAIN][entry_id]
+            config_entry = coordinators["config_entry"]
+            host = config_entry.data.get(CONF_HOST)
+            base_device_name = f"EnergyMe {host.split('.')[-1] if '.' in host else host}"
 
             self._attr_device_info = {
-                "identifiers": {(DOMAIN, device_id)},
-                "name": device_name,
+                "identifiers": {(DOMAIN, base_device_id)},
+                "name": base_device_name,
                 "manufacturer": "Jibril Sharafi",
                 "model": "EnergyMe - Home",
             }

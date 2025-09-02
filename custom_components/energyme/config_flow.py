@@ -107,7 +107,7 @@ class EnergyMeOptionsFlowHandler(config_entries.OptionsFlow):
         # Available sensor options with friendly names (defined once)
         sensor_options = {
             "voltage": "Voltage",
-            "current": "Current", 
+            "current": "Current",
             "activePower": "Real Power",
             "reactivePower": "Reactive Power",
             "apparentPower": "Apparent Power",
@@ -118,29 +118,29 @@ class EnergyMeOptionsFlowHandler(config_entries.OptionsFlow):
             "reactiveEnergyExported": "Reactive Energy Exported",
             "apparentEnergy": "Apparent Energy",
         }
-        
+
         if user_input is not None:
             # Convert boolean sensor selections back to list format
             selected_sensors = []
             scan_interval = user_input.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
-            
+
             # Create reverse mapping from display name to sensor key
             display_name_to_key = {display_name: sensor_key for sensor_key, display_name in sensor_options.items()}
-            
+
             for field_name, value in user_input.items():
                 if value and field_name in display_name_to_key:
                     selected_sensors.append(display_name_to_key[field_name])
-            
+
             # Ensure at least one sensor is selected
             if not selected_sensors:
                 selected_sensors = DEFAULT_SENSORS
-            
+
             # Create the final options data
             options_data = {
                 CONF_SCAN_INTERVAL: scan_interval,
                 CONF_SENSORS: selected_sensors,
             }
-            
+
             return self.async_create_entry(title="", data=options_data)
 
         current_scan_interval = self.config_entry.options.get(
