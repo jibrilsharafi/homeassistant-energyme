@@ -26,11 +26,11 @@ from .const import DOMAIN, CONF_HOST, CONF_SENSORS, DEFAULT_SENSORS, SYSTEM_SENS
 
 _LOGGER = logging.getLogger(__name__)
 
-# TODO: fix Configure button (returns Error Config flow could not be loaded: 500 Internal Server Error Server got itself in trouble)
 # TODO: add auto discovery via mDNS
 # TODO: test first default credentials (and in any case only ask for the password, the username is always the same)
 # TODO: split the sensors in meter sensors and system sensors
 # TODO: sensors should be disabled by default except necessary ones
+# TODO: clean comments and docs
 
 # Define a structure for your sensor types
 # (API Key, Friendly Name Suffix, Unit, Device Class, State Class, Icon (optional))
