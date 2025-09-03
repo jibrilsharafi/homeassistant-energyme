@@ -16,20 +16,19 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Coor
 from homeassistant.helpers import device_registry as dr
 
 from homeassistant.const import (
-    UnitOfEnergy, # For Wh/kWh
-    UnitOfPower, # For W/kW
-    UnitOfElectricCurrent, # For A
-    UnitOfElectricPotential, # For V
-    UnitOfReactivePower, # For var
-    UnitOfApparentPower, # For VA
+    UnitOfElectricPotential,
+    UnitOfElectricCurrent,
+    UnitOfPower,
+    UnitOfReactivePower,
+    UnitOfApparentPower,
+    UnitOfEnergy,
 )
 
 
-from .const import DOMAIN, CONF_HOST, CONF_SENSORS, DEFAULT_SENSORS, SYSTEM_SENSORS
+from .const import AUTHOR, COMPANY, DOMAIN, CONF_HOST, CONF_SENSORS, DEFAULT_SENSORS, MODEL, SYSTEM_SENSORS
 
 _LOGGER = logging.getLogger(__name__)
 
-# TODO: better name (using device id maybe)
 # TODO: add auto discovery via mDNS
 # TODO: test first default credentials (and in any case only ask for the password, the username is always the same)
 # TODO: clean comments and docs
@@ -104,18 +103,18 @@ SENSOR_DESCRIPTIONS: dict[str, SensorEntityDescription] = {
     "reactiveEnergyImported": SensorEntityDescription(
         key="reactiveEnergyImported",
         name="Reactive Energy Imported",
-        native_unit_of_measurement="varh",
+        native_unit_of_measurement="VArh",
         device_class=None,
         state_class=SensorStateClass.TOTAL_INCREASING,
-        icon="mdi:chart-scatter-plot",
+        icon="mdi:chart-histogram-outline",
     ),
     "reactiveEnergyExported": SensorEntityDescription(
         key="reactiveEnergyExported",
         name="Reactive Energy Exported",
-        native_unit_of_measurement="varh",
+        native_unit_of_measurement="VArh",
         device_class=None,
         state_class=SensorStateClass.TOTAL_INCREASING,
-        icon="mdi:chart-scatter-plot-hexbin",
+        icon="mdi:chart-histogram-outline",
     ),
     "apparentEnergy": SensorEntityDescription(
         key="apparentEnergy",
@@ -123,7 +122,7 @@ SENSOR_DESCRIPTIONS: dict[str, SensorEntityDescription] = {
         native_unit_of_measurement="VAh",
         device_class=None,
         state_class=SensorStateClass.TOTAL_INCREASING,
-        icon="mdi:chart-areaspline",
+        icon="mdi:chart-histogram-outline",
     ),
 }
 
@@ -239,11 +238,14 @@ async def async_setup_entry(
     base_device_id = static_info.get("device", {}).get("id") or entry.entry_id
     firmware_version = static_info.get("firmware", {}).get("buildVersion")
 
-    # Get host from config entry
+    # Get host from config entry for fallback
     coordinators = hass.data[DOMAIN][entry.entry_id]
     config_entry = coordinators["config_entry"]
     host = config_entry.data.get(CONF_HOST)
-    main_device_name = f"EnergyMe {host.split('.')[-1] if '.' in host else host}"
+
+    # Use device ID if available, otherwise fall back to friendly name or host
+    device_name_suffix = base_device_id if base_device_id != entry.entry_id else host.split('.')[-1] if '.' in host else host
+    main_device_name = f"{COMPANY} - {MODEL} | {device_name_suffix}"
 
     # Create the main parent device
     # Note: async_get_or_create() automatically registers the device in HA's device registry
@@ -254,8 +256,8 @@ async def async_setup_entry(
         config_entry_id=entry.entry_id,
         identifiers={(DOMAIN, base_device_id)},
         name=main_device_name,
-        manufacturer="Jibril Sharafi",
-        model="EnergyMe - Home",
+        manufacturer=AUTHOR,
+        model=f"{COMPANY} - {MODEL}",
         sw_version=firmware_version,
     )
 
@@ -385,21 +387,24 @@ class EnergyMeSensor(CoordinatorEntity, SensorEntity):
         base_device_id = static_info.get("device", {}).get("id") or entry_id
         firmware_version = static_info.get("firmware", {}).get("buildVersion")
 
-        # Get host from config entry for a cleaner device name
+        # Get host from config entry for device name
         config_entry = coordinators["config_entry"]
         host = config_entry.data.get(CONF_HOST)
 
+        # Use device ID if available, otherwise fall back to friendly name or host
+        device_name_suffix = base_device_id if base_device_id != entry_id else host.split('.')[-1] if '.' in host else host
+
         # Create unique device for this channel
         channel_device_id = f"{base_device_id}_ch{channel_index}"
-        device_name = f"EnergyMe {host.split('.')[-1] if '.' in host else host} - {channel_label}"
+        device_name = f"{COMPANY} - {MODEL} | {device_name_suffix} - {channel_label}"
 
         # The device_info with "via_device" creates the parent-child relationship
         # HomeAssistant automatically handles the device creation and linking
         self._attr_device_info = {
             "identifiers": {(DOMAIN, channel_device_id)},
             "name": device_name,
-            "manufacturer": "Jibril Sharafi",
-            "model": f"EnergyMe - {channel_label}",
+            "manufacturer": AUTHOR,
+            "model": f"{COMPANY} - {channel_label}",
             "via_device": (DOMAIN, base_device_id),  # This links to the main device created above
         }        # Add firmware version if available
         if firmware_version:
@@ -502,14 +507,17 @@ class EnergyMeSystemSensor(CoordinatorEntity, SensorEntity):
             coordinators = coordinator.hass.data[DOMAIN][entry_id]
             config_entry = coordinators["config_entry"]
             host = config_entry.data.get(CONF_HOST)
-            device_name = f"EnergyMe {host.split('.')[-1] if '.' in host else host}"
+
+            # Use device ID if available, otherwise fall back to friendly name or host
+            device_name_suffix = self._main_device_id if self._main_device_id != entry_id else host.split('.')[-1] if '.' in host else host
+            device_name = f"{COMPANY} - {MODEL} | {device_name_suffix} - System"
 
             # Using the same identifiers as the main device links these sensors to it
             self._attr_device_info = {
                 "identifiers": {(DOMAIN, self._main_device_id)},
                 "name": device_name,
-                "manufacturer": "Jibril Sharafi",
-                "model": "EnergyMe - Home",
+                "manufacturer": AUTHOR,
+                "model": f"{COMPANY} - {MODEL}",
             }
 
             # Add firmware version if available

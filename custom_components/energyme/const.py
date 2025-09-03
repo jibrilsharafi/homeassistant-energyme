@@ -1,5 +1,9 @@
 """Constants for the EnergyMe integration."""
 
+AUTHOR = "Jibril Sharafi"
+COMPANY = "EnergyMe"
+MODEL = "Home"
+
 DOMAIN = "energyme"
 CONF_HOST = "host" # Replaces CONF_URL, more standard for IP/hostname
 CONF_USERNAME = "username"
