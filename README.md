@@ -9,6 +9,12 @@ _A Home Assistant custom integration for EnergyMe energy monitoring devices._
 
 This integration allows you to monitor electrical energy consumption and production data from EnergyMe devices directly in Home Assistant. It provides real-time access to electrical measurements including voltage, current, power, energy consumption, and power factor across multiple monitored channels.
 
+Example of integration:
+![Integration](resources/homeassistant_integration.png)
+
+Resultant energy panel:
+![Energy Panel](resources/homeassistant_energy_panel.png)
+
 ## Features
 
 - **Real-time Energy Monitoring**: Track electrical consumption and production
