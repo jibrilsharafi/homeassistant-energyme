@@ -346,16 +346,25 @@ class EnergyMeSensor(CoordinatorEntity, SensorEntity):
         """Initialize the sensor."""
         super().__init__(coordinator)
         self._channel_index = channel_index
+        self._channel_label = channel_label
         self._api_key = api_key # e.g., "activePower"
 
-        # Construct a unique ID: domain_entryid_channelX_apikey
+        # Construct a stable unique ID: domain_entryid_channelX_apikey
+        # This never changes even if user renames channels or changes device settings
         self._attr_unique_id = f"{DOMAIN}_{entry_id}_ch{channel_index}_{api_key}"
 
-        # Create a copy of the provided SensorEntityDescription with simpler name since device name includes channel.
+        # Set entity_id explicitly based on unique_id for maximum stability
+        # Format: sensor.energyme_{entry_id}_ch{channel_index}_{api_key}
+        # This survives channel label changes, ensuring history is preserved
+        self.entity_id = f"sensor.{DOMAIN}_{entry_id}_ch{channel_index}_{api_key.lower()}"
+
+        # Create a copy of the provided SensorEntityDescription with friendly name
+        # Format: "{channel_label} - {sensor_name}" (e.g., "General - Active Power")
+        # This provides human-readable names in the UI while entity_id remains stable
         # SensorEntityDescription is a frozen dataclass, so use dataclasses.replace.
         self.entity_description = dataclasses.replace(
             entity_description,
-            name=entity_description.name,  # Just the sensor name, not channel + sensor name
+            name=f"{channel_label} - {entity_description.name}",
             key=api_key,
         )
 
@@ -386,16 +395,13 @@ class EnergyMeSensor(CoordinatorEntity, SensorEntity):
         base_device_id = static_info.get("device", {}).get("id") or entry_id
         firmware_version = static_info.get("firmware", {}).get("buildVersion")
 
-        # Get host from config entry for device name
-        config_entry = coordinators["config_entry"]
-        host = config_entry.data.get(CONF_HOST)
+        # Create unique device identifier for this channel using entry_id for stability
+        # Using entry_id ensures device identity remains stable even if hardware changes
+        channel_device_id = f"{entry_id}_ch{channel_index}"
 
-        # Use device ID if available, otherwise fall back to friendly name or host
-        device_name_suffix = base_device_id if base_device_id != entry_id else host.split('.')[-1] if '.' in host else host
-
-        # Create unique device for this channel
-        channel_device_id = f"{base_device_id}_ch{channel_index}"
-        device_name = f"{COMPANY} - {MODEL} | {device_name_suffix} - {channel_label}"
+        # Simple device name: "Channel {index} - {label}"
+        # This makes device names clean and focused on the channel itself
+        device_name = f"Channel {channel_index} - {channel_label}"
 
         # The device_info with "via_device" creates the parent-child relationship
         # HomeAssistant automatically handles the device creation and linking
@@ -403,9 +409,11 @@ class EnergyMeSensor(CoordinatorEntity, SensorEntity):
             "identifiers": {(DOMAIN, channel_device_id)},
             "name": device_name,
             "manufacturer": AUTHOR,
-            "model": f"{COMPANY} - {channel_label}",
+            "model": f"{COMPANY} - {MODEL}",
             "via_device": (DOMAIN, base_device_id),  # This links to the main device created above
-        }        # Add firmware version if available
+        }
+
+        # Add firmware version if available
         if firmware_version:
             self._attr_device_info["sw_version"] = firmware_version
 
@@ -488,10 +496,15 @@ class EnergyMeSystemSensor(CoordinatorEntity, SensorEntity):
         self._api_key = api_key
         self._main_device_id = main_device_id
 
-        # Construct a unique ID: domain_entryid_system_apikey
+        # Construct a stable unique ID: domain_entryid_system_apikey
         self._attr_unique_id = f"{DOMAIN}_{entry_id}_system_{api_key}"
 
+        # Set entity_id explicitly based on unique_id for maximum stability
+        # Format: sensor.energyme_{entry_id}_system_{api_key}
+        self.entity_id = f"sensor.{DOMAIN}_{entry_id}_system_{api_key.lower()}"
+
         # Use the provided entity description
+        # Entity name will be the friendly name (e.g., "Firmware Version", "Temperature")
         self.entity_description = entity_description
 
         # Device Info: Link system sensor to the main device
