@@ -10,10 +10,19 @@ _A Home Assistant custom integration for EnergyMe energy monitoring devices._
 This integration allows you to monitor electrical energy consumption and production data from EnergyMe devices directly in Home Assistant. It provides real-time access to electrical measurements including voltage, current, power, energy consumption, and power factor across multiple monitored channels.
 
 Example of integration:
-![Integration](resources/homeassistant_integration.png)
+![Integration](resources/integration_homepage.png)
 
 Resultant energy panel:
-![Energy Panel](resources/homeassistant_energy_panel.png)
+![Energy Panel](resources/energy_panel.png)
+
+Example of minimal sensor data:
+![Minimal Sensors](resources/integration_general.png)
+
+System data sensors:
+![System Sensors](resources/integration_system.png)
+
+Full setup animation:
+![Setup Animation](resources/setup_integration.gif)
 
 ## Features
 
@@ -116,19 +125,16 @@ Your EnergyMe device must:
 
 ## Development
 
-Development and testing are done in a Visual Studio Code devcontainer, as defined in [`.devcontainer.json`](.devcontainer.json).
+For development and testing instructions, see the [`dev/`](dev/) directory.
 
-Python packages used for development, linting, and testing this integration are listed in [`requirements.txt`](requirements.txt).
-
-### Local Testing
-
-Use the provided PowerShell script to test the integration locally:
+**Quick start:**
 
 ```powershell
-.\test-local.ps1
+cd dev
+.\run-ha-dev.ps1  # Run Home Assistant in Docker for testing
 ```
 
-This will run hassfest validation using Docker containers.
+Python packages used for development are listed in [`dev/requirements.txt`](dev/requirements.txt).
 
 ## Contributing
 
