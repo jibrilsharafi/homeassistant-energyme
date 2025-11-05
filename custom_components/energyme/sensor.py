@@ -345,8 +345,8 @@ class EnergyMeSensor(CoordinatorEntity, SensorEntity):  # type: ignore[misc]
         """Initialize the sensor."""
         super().__init__(coordinator)
         self._channel_index = channel_index
-        self._channel_label = channel_label
         self._api_key = api_key # e.g., "activePower"
+        self._base_sensor_name = entity_description.name  # Store base name for dynamic updates
 
         # Construct a stable unique ID: domain_entryid_channelX_apikey
         # This never changes even if user renames channels or changes device settings
@@ -357,13 +357,15 @@ class EnergyMeSensor(CoordinatorEntity, SensorEntity):  # type: ignore[misc]
         # This survives channel label changes, ensuring history is preserved
         self.entity_id = f"sensor.{DOMAIN}_{entry_id}_ch{channel_index}_{api_key.lower()}"
 
-        # Create a copy of the provided SensorEntityDescription with friendly name
+        # Set initial friendly name with channel label
         # Format: "{channel_label} - {sensor_name}" (e.g., "General - Active Power")
-        # This provides human-readable names in the UI while entity_id remains stable
-        # SensorEntityDescription is a frozen dataclass, so use dataclasses.replace.
+        # This will be updated dynamically when channel label changes
+        self._attr_name = f"{channel_label} - {self._base_sensor_name}"
+
+        # Create entity description without the channel label in name
+        # The name will be managed via _attr_name for dynamic updates
         self.entity_description = dataclasses.replace(
             entity_description,
-            name=f"{channel_label} - {entity_description.name}",
             key=api_key,
         )
 
@@ -422,6 +424,57 @@ class EnergyMeSensor(CoordinatorEntity, SensorEntity):  # type: ignore[misc]
             self._attr_native_value = None
             self._attr_available = False
             return
+
+        # Update channel label if it changed on the device
+        channel_configs = self.coordinator.data.get("channels", {})
+        if isinstance(channel_configs, dict) and "channels" in channel_configs:
+            channel_configs = channel_configs["channels"]
+        
+        # Normalize to dict if needed
+        if isinstance(channel_configs, list):
+            normalized = {}
+            for item in channel_configs:
+                idx = item.get("index") if isinstance(item, dict) else None
+                if idx is not None:
+                    normalized[str(idx)] = item
+            channel_configs = normalized
+        
+        # Get current channel label from device
+        channel_data_config = channel_configs.get(str(self._channel_index), {})
+        if isinstance(channel_data_config, dict):
+            current_label = channel_data_config.get("label", f"Channel {self._channel_index}")
+            
+            # Update friendly name if label changed
+            new_name = f"{current_label} - {self._base_sensor_name}"
+            if self._attr_name != new_name:
+                self._attr_name = new_name
+                _LOGGER.debug(
+                    "Updated friendly name for ch%d %s to: %s",
+                    self._channel_index,
+                    self._api_key,
+                    new_name
+                )
+            
+            # Update device name if label changed
+            new_device_name = f"Channel {self._channel_index} - {current_label}"
+            if self._attr_device_info and self._attr_device_info.get("name") != new_device_name:
+                self._attr_device_info["name"] = new_device_name
+                
+                # Also update in device registry
+                identifiers = self._attr_device_info.get("identifiers")
+                if identifiers:
+                    device_registry = dr.async_get(self.hass)
+                    device = device_registry.async_get_device(identifiers=identifiers)
+                    if device:
+                        device_registry.async_update_device(
+                            device.id,
+                            name=new_device_name
+                        )
+                        _LOGGER.debug(
+                            "Updated device name for ch%d to: %s",
+                            self._channel_index,
+                            new_device_name
+                        )
 
         meter_data_list = self.coordinator.data.get("meter", [])
         # Normalize meter_data_list: accept dict (keyed by index) or list of items
