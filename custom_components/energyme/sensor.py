@@ -239,7 +239,6 @@ async def async_setup_entry(
     firmware_version = static_info.get("firmware", {}).get("buildVersion")
 
     # Get host from config entry for fallback
-    coordinators = hass.data[DOMAIN][entry.entry_id]
     config_entry = coordinators["config_entry"]
     host = config_entry.data.get(CONF_HOST)
 

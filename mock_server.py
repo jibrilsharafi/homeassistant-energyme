@@ -126,34 +126,6 @@ def system_info():
         }
     })
 
-# @app.route('/api/v1/system/statistics', methods=['GET'])
-# def system_statistics():
-#     """Get system statistics."""
-#     return jsonify({
-#         "ade7953TotalInterrupts": 1000,
-#         "ade7953TotalHandledInterrupts": 999,
-#         "ade7953ReadingCount": 500,
-#         "ade7953ReadingCountFailure": 1,
-#         "mqttMessagesPublished": 200,
-#         "mqttMessagesPublishedError": 0,
-#         "customMqttMessagesPublished": 50,
-#         "customMqttMessagesPublishedError": 0,
-#         "modbusRequests": 100,
-#         "modbusRequestsError": 2,
-#         "influxdbUploadCount": 50,
-#         "influxdbUploadCountError": 0,
-#         "wifiConnection": 1,
-#         "wifiConnectionError": 0,
-#         "webServerRequests": 1500,
-#         "webServerRequestsError": 5,
-#         "logVerbose": 200,
-#         "logDebug": 500,
-#         "logInfo": 1000,
-#         "logWarning": 50,
-#         "logError": 10,
-#         "logFatal": 1,
-#         "logDropped": 5
-#     })
 
 @app.route('/api/v1/system/restart', methods=['POST'])
 def system_restart():
