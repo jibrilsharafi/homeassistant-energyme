@@ -8,14 +8,8 @@ from homeassistant.components.sensor import (
     SensorEntityDescription,  # Add this import
     SensorStateClass,
 )
-from homeassistant.helpers.entity import EntityCategory
-from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, CoordinatorEntity
-from homeassistant.helpers import device_registry as dr
-
 from homeassistant.const import (
+    EntityCategory,
     UnitOfElectricPotential,
     UnitOfElectricCurrent,
     UnitOfPower,
@@ -23,6 +17,11 @@ from homeassistant.const import (
     UnitOfApparentPower,
     UnitOfEnergy,
 )
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, CoordinatorEntity
+from homeassistant.helpers import device_registry as dr
 
 
 from .const import AUTHOR, COMPANY, DOMAIN, CONF_HOST, CONF_SENSORS, DEFAULT_SENSORS, MODEL, SYSTEM_SENSORS
@@ -329,7 +328,7 @@ async def async_setup_entry(
     async_add_entities(sensors)
 
 
-class EnergyMeSensor(CoordinatorEntity, SensorEntity):
+class EnergyMeSensor(CoordinatorEntity, SensorEntity):  # type: ignore[misc]
     """Representation of an EnergyMe Sensor."""
 
     _attr_has_entity_name = True # Use if names are like "Device Friendly Name Sensor Name"
@@ -417,11 +416,12 @@ class EnergyMeSensor(CoordinatorEntity, SensorEntity):
         if firmware_version:
             self._attr_device_info["sw_version"] = firmware_version
 
-    @property
-    def native_value(self) -> float | None:
-        """Return the state of the sensor."""
+    def _update_native_value(self) -> None:
+        """Update the native value from coordinator data."""
         if not self.coordinator.last_update_success or not self.coordinator.data:
-            return None
+            self._attr_native_value = None
+            self._attr_available = False
+            return
 
         meter_data_list = self.coordinator.data.get("meter", [])
         # Normalize meter_data_list: accept dict (keyed by index) or list of items
@@ -451,7 +451,8 @@ class EnergyMeSensor(CoordinatorEntity, SensorEntity):
             try:
                 value = float(channel_data[self._api_key])
                 decimals = DECIMALS_MAP.get(self._api_key, DEFAULT_DECIMALS)
-                return round(value, decimals)
+                self._attr_native_value = round(value, decimals)
+                self._attr_available = True
             except (ValueError, TypeError):
                 _LOGGER.warning(
                     "Invalid value for %s on channel %s: %s",
@@ -459,26 +460,22 @@ class EnergyMeSensor(CoordinatorEntity, SensorEntity):
                     self._channel_index,
                     channel_data[self._api_key]
                 )
-                return None
-        return None
+                self._attr_native_value = None
+                self._attr_available = False
+        else:
+            self._attr_native_value = None
+            self._attr_available = True  # Available but no data yet
 
-    @property
-    def available(self) -> bool:
-        """Return if entity is available."""
-        # Available if the coordinator is successful and the specific data point exists
-        if not self.coordinator.last_update_success:
-            return False
-
-        # Check if the specific data point is available (it might not be for some reason)
-        # This is implicitly handled by native_value returning None if data isn't there.
-        # A more explicit check could be added if needed.
-        return super().available
+    def _handle_coordinator_update(self) -> None:
+        """Handle updated data from the coordinator."""
+        self._update_native_value()
+        super()._handle_coordinator_update()
 
     # The name property is now handled by self.entity_description.name and _attr_has_entity_name = True
     # The icon, unit_of_measurement, device_class, state_class are set as _attr_ properties.
 
 
-class EnergyMeSystemSensor(CoordinatorEntity, SensorEntity):
+class EnergyMeSystemSensor(CoordinatorEntity, SensorEntity):  # type: ignore[misc]
     """Representation of an EnergyMe System Sensor."""
 
     _attr_has_entity_name = True
@@ -536,44 +533,47 @@ class EnergyMeSystemSensor(CoordinatorEntity, SensorEntity):
             if firmware_version:
                 self._attr_device_info["sw_version"] = firmware_version
 
-    @property
-    def native_value(self):
-        """Return the state of the sensor based on system info."""
+    def _update_native_value(self) -> None:
+        """Update the native value from coordinator data."""
         if not self.coordinator.data:
-            return None
+            self._attr_native_value = None
+            self._attr_available = False
+            return
 
         device_info = self.coordinator.data.get("device_info", {})
         if not device_info:
-            return None
+            self._attr_native_value = None
+            self._attr_available = False
+            return
 
         # Extract values based on the API key
+        value = None
         if self._api_key == "firmware_version":
-            return device_info.get("static", {}).get("firmware", {}).get("buildVersion")
+            value = device_info.get("static", {}).get("firmware", {}).get("buildVersion")
         elif self._api_key == "device_id":
-            return device_info.get("static", {}).get("device", {}).get("id")
+            value = device_info.get("static", {}).get("device", {}).get("id")
         elif self._api_key == "temperature":
             temp_value = device_info.get("dynamic", {}).get("performance", {}).get("temperatureCelsius")
             if temp_value is not None:
                 try:
-                    return round(float(temp_value), 1)
+                    value = round(float(temp_value), 1)
                 except (ValueError, TypeError):
-                    return temp_value
-            return temp_value
+                    value = temp_value
         elif self._api_key == "wifi_rssi":
-            return device_info.get("dynamic", {}).get("network", {}).get("wifiRssi")
+            value = device_info.get("dynamic", {}).get("network", {}).get("wifiRssi")
         elif self._api_key == "heap_free_percentage":
             heap_info = device_info.get("dynamic", {}).get("memory", {}).get("heap", {})
             free_percentage = heap_info.get("freePercentage")
             if free_percentage is not None:
                 try:
-                    return round(float(free_percentage), 1)
+                    value = round(float(free_percentage), 1)
                 except (ValueError, TypeError):
-                    return free_percentage
-            return free_percentage
+                    value = free_percentage
 
-        return None
+        self._attr_native_value = value
+        self._attr_available = self.coordinator.last_update_success and value is not None
 
-    @property
-    def available(self) -> bool:
-        """Return if entity is available."""
-        return self.coordinator.last_update_success and self.coordinator.data is not None
+    def _handle_coordinator_update(self) -> None:
+        """Handle updated data from the coordinator."""
+        self._update_native_value()
+        super()._handle_coordinator_update()
