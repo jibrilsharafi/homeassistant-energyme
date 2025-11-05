@@ -429,7 +429,7 @@ class EnergyMeSensor(CoordinatorEntity, SensorEntity):  # type: ignore[misc]
         channel_configs = self.coordinator.data.get("channels", {})
         if isinstance(channel_configs, dict) and "channels" in channel_configs:
             channel_configs = channel_configs["channels"]
-        
+
         # Normalize to dict if needed
         if isinstance(channel_configs, list):
             normalized = {}
@@ -438,12 +438,12 @@ class EnergyMeSensor(CoordinatorEntity, SensorEntity):  # type: ignore[misc]
                 if idx is not None:
                     normalized[str(idx)] = item
             channel_configs = normalized
-        
+
         # Get current channel label from device
         channel_data_config = channel_configs.get(str(self._channel_index), {})
         if isinstance(channel_data_config, dict):
             current_label = channel_data_config.get("label", f"Channel {self._channel_index}")
-            
+
             # Update friendly name if label changed
             new_name = f"{current_label} - {self._base_sensor_name}"
             if self._attr_name != new_name:
@@ -454,12 +454,12 @@ class EnergyMeSensor(CoordinatorEntity, SensorEntity):  # type: ignore[misc]
                     self._api_key,
                     new_name
                 )
-            
+
             # Update device name if label changed
             new_device_name = f"Channel {self._channel_index} - {current_label}"
             if self._attr_device_info and self._attr_device_info.get("name") != new_device_name:
                 self._attr_device_info["name"] = new_device_name
-                
+
                 # Also update in device registry
                 identifiers = self._attr_device_info.get("identifiers")
                 if identifiers:
