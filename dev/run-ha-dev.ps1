@@ -4,7 +4,7 @@
 $ErrorActionPreference = 'Stop'
 
 # Paths
-$repoRoot = (Get-Location).Path
+$repoRoot = Split-Path -Parent (Get-Location).Path
 $configDir = Join-Path $repoRoot 'config'
 $ccDir = Join-Path $repoRoot 'custom_components\energyme'
 $yamlFile = Join-Path $configDir 'configuration.yaml'
