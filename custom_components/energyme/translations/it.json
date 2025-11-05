@@ -1,0 +1,40 @@
+{
+    "config": {
+        "step": {
+            "user": {
+                "title": "Connetti a EnergyMe",
+                "description": "Inserisci l'indirizzo hostname/IP e le credenziali per il tuo dispositivo EnergyMe. Se hai bisogno di aiuto con la configurazione dai un'occhiata qui: https://github.com/jibrilsharafi/EnergyMe-Home",
+                "data": {
+                    "host": "Host",
+                    "username": "Nome utente",
+                    "password": "Password"
+                }
+            }
+        },
+        "error": {
+            "cannot_connect": "Impossibile connettersi al dispositivo EnergyMe. Controlla l'host e la rete.",
+            "cannot_connect_timeout": "La connessione al dispositivo EnergyMe è scaduta. Verifica che sia online e che l'host sia corretto.",
+            "cannot_connect_http": "Ricevuto un errore HTTP dal dispositivo EnergyMe. Controlla i log per i dettagli.",
+            "invalid_auth": "Autenticazione fallita. Controlla nome utente e password.",
+            "unknown": "Si è verificato un errore sconosciuto."
+        },
+        "abort": {
+            "already_configured": "Questo dispositivo EnergyMe è già configurato."
+        }
+    },
+    "options": {
+        "step": {
+            "init": {
+                "title": "Opzioni EnergyMe",
+                "description": "Configura la frequenza di aggiornamento e quali sensori abilitare.",
+                "data": {
+                    "scan_interval": "Intervallo di aggiornamento (secondi)",
+                    "sensors": "Sensori abilitati"
+                },
+                "data_description": {
+                    "sensors": "Seleziona quali tipi di sensori abilitare. Deve essere selezionato almeno un sensore."
+                }
+            }
+        }
+    }
+}
