@@ -8,23 +8,29 @@ from homeassistant.components.sensor import (
     SensorEntityDescription,  # Add this import
     SensorStateClass,
 )
+from homeassistant.const import (
+    EntityCategory,
+    UnitOfElectricPotential,
+    UnitOfElectricCurrent,
+    UnitOfPower,
+    UnitOfReactivePower,
+    UnitOfApparentPower,
+    UnitOfEnergy,
+)
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, CoordinatorEntity
-from homeassistant.const import (
-    UnitOfEnergy, # For Wh/kWh
-    UnitOfPower, # For W/kW
-    UnitOfElectricCurrent, # For A
-    UnitOfElectricPotential, # For V
-    UnitOfReactivePower, # For var
-    UnitOfApparentPower, # For VA
-)
+from homeassistant.helpers import device_registry as dr
 
 
-from .const import DOMAIN, CONF_HOST
+from .const import AUTHOR, COMPANY, DOMAIN, CONF_HOST, CONF_SENSORS, DEFAULT_SENSORS, MODEL, SYSTEM_SENSORS
 
 _LOGGER = logging.getLogger(__name__)
+
+# TODO: add auto discovery via mDNS
+# TODO: test first default credentials (and in any case only ask for the password, the username is always the same)
+# TODO: clean comments and docs
 
 # Define a structure for your sensor types
 # (API Key, Friendly Name Suffix, Unit, Device Class, State Class, Icon (optional))
@@ -96,18 +102,18 @@ SENSOR_DESCRIPTIONS: dict[str, SensorEntityDescription] = {
     "reactiveEnergyImported": SensorEntityDescription(
         key="reactiveEnergyImported",
         name="Reactive Energy Imported",
-        native_unit_of_measurement="varh",
+        native_unit_of_measurement="VArh",
         device_class=None,
         state_class=SensorStateClass.TOTAL_INCREASING,
-        icon="mdi:chart-scatter-plot",
+        icon="mdi:chart-histogram-outline",
     ),
     "reactiveEnergyExported": SensorEntityDescription(
         key="reactiveEnergyExported",
         name="Reactive Energy Exported",
-        native_unit_of_measurement="varh",
+        native_unit_of_measurement="VArh",
         device_class=None,
         state_class=SensorStateClass.TOTAL_INCREASING,
-        icon="mdi:chart-scatter-plot-hexbin",
+        icon="mdi:chart-histogram-outline",
     ),
     "apparentEnergy": SensorEntityDescription(
         key="apparentEnergy",
@@ -115,7 +121,56 @@ SENSOR_DESCRIPTIONS: dict[str, SensorEntityDescription] = {
         native_unit_of_measurement="VAh",
         device_class=None,
         state_class=SensorStateClass.TOTAL_INCREASING,
-        icon="mdi:chart-areaspline",
+        icon="mdi:chart-histogram-outline",
+    ),
+}
+
+# System information sensors (not per-channel)
+SYSTEM_SENSOR_DESCRIPTIONS: dict[str, SensorEntityDescription] = {
+    "firmware_version": SensorEntityDescription(
+        key="firmware_version",
+        name="Firmware Version",
+        native_unit_of_measurement=None,
+        device_class=None,
+        state_class=None,
+        icon="mdi:chip",
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    "device_id": SensorEntityDescription(
+        key="device_id",
+        name="Device ID",
+        native_unit_of_measurement=None,
+        device_class=None,
+        state_class=None,
+        icon="mdi:identifier",
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    "temperature": SensorEntityDescription(
+        key="temperature",
+        name="Temperature",
+        native_unit_of_measurement="°C",
+        device_class=SensorDeviceClass.TEMPERATURE,
+        state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:thermometer",
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    "wifi_rssi": SensorEntityDescription(
+        key="wifi_rssi",
+        name="WiFi Signal Strength",
+        native_unit_of_measurement="dBm",
+        device_class=SensorDeviceClass.SIGNAL_STRENGTH,
+        state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:wifi-strength-2",
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    "heap_free_percentage": SensorEntityDescription(
+        key="heap_free_percentage",
+        name="Heap Memory Free",
+        native_unit_of_measurement="%",
+        device_class=None,
+        state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:memory",
+        entity_category=EntityCategory.DIAGNOSTIC,
     ),
 }
 
@@ -141,17 +196,26 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the sensor platform."""
-    coordinator: DataUpdateCoordinator = hass.data[DOMAIN][entry.entry_id]
+    coordinators = hass.data[DOMAIN][entry.entry_id]
+    meter_coordinator: DataUpdateCoordinator = coordinators["meter_coordinator"]
+    system_coordinator: DataUpdateCoordinator = coordinators["system_coordinator"]
 
-    # Wait for the coordinator to have data
-    if not coordinator.last_update_success or not coordinator.data:
-        # This typically shouldn't happen if async_config_entry_first_refresh was awaited
-        _LOGGER.warning("Coordinator has no data, deferring sensor setup")
-        # You might raise ConfigEntryNotReady here if it's critical,
-        # but sensors will just appear as unavailable until data arrives.
-        # return
+    # Get enabled sensors from options, fallback to defaults
+    enabled_sensors = entry.options.get(CONF_SENSORS, DEFAULT_SENSORS)
 
-    channel_configs = coordinator.data.get("channels", {}) # from /api/v1/ade7953/channel
+    # Wait for the coordinators to have data
+    if not meter_coordinator.last_update_success or not meter_coordinator.data:
+        _LOGGER.warning("Meter coordinator has no data, deferring sensor setup")
+
+    if not system_coordinator.last_update_success or not system_coordinator.data:
+        _LOGGER.warning("System coordinator has no data, deferring sensor setup")
+
+    channel_configs = meter_coordinator.data.get("channels", {}) if meter_coordinator.data else {}
+    # Handle the response structure from the API
+    if isinstance(channel_configs, dict) and "channels" in channel_configs:
+        # API returns {"channels": [...]}
+        channel_configs = channel_configs["channels"]
+
     # Normalize channel_configs to a dict keyed by index-string so downstream code can rely on .items()
     if isinstance(channel_configs, list):
         _LOGGER.debug("channel_configs is a list, normalizing to dict")
@@ -161,12 +225,58 @@ async def async_setup_entry(
             key = str(item.get("index", i)) if isinstance(item, dict) else str(i)
             normalized[key] = item
         channel_configs = normalized
-    # meter_data_list = coordinator.data.get("meter", []) # from /rest/meter
 
     sensors = []
 
-    # The /rest/get-channel provides channel activity and labels
-    # The /rest/meter provides the actual data, indexed
+    # Create the main parent device in the device registry
+    device_registry = dr.async_get(hass)
+
+    # Get device info from system coordinator for main device
+    device_data = system_coordinator.data.get("device_info", {}) if system_coordinator.data else {}
+    static_info = device_data.get("static", {})
+    base_device_id = static_info.get("device", {}).get("id") or entry.entry_id
+    firmware_version = static_info.get("firmware", {}).get("buildVersion")
+
+    # Get host from config entry for fallback
+    config_entry = coordinators["config_entry"]
+    host = config_entry.data.get(CONF_HOST)
+
+    # Use device ID if available, otherwise fall back to friendly name or host
+    device_name_suffix = base_device_id if base_device_id != entry.entry_id else host.split('.')[-1] if '.' in host else host
+    main_device_name = f"{COMPANY} - {MODEL} | {device_name_suffix}"
+
+    # Create the main parent device
+    # Note: async_get_or_create() automatically registers the device in HA's device registry
+    # as a side effect. The return value (main_device) contains the device object, but the
+    # actual registration happens when this function is called. We don't need to use the
+    # return value further - the device is now available in the registry.
+    main_device = device_registry.async_get_or_create(
+        config_entry_id=entry.entry_id,
+        identifiers={(DOMAIN, base_device_id)},
+        name=main_device_name,
+        manufacturer=AUTHOR,
+        model=f"{COMPANY} - {MODEL}",
+        sw_version=firmware_version,
+    )
+
+    # Log that main device was created
+    _LOGGER.debug("Created main device: %s with ID: %s", main_device.name, main_device.id)
+
+    # Add system sensors to the main device (not channel-specific) - always enabled
+    for api_key, description in SYSTEM_SENSOR_DESCRIPTIONS.items():
+        if api_key in SYSTEM_SENSORS:  # Only create defined system sensors
+            sensors.append(
+                EnergyMeSystemSensor(
+                    coordinator=system_coordinator,  # Use system coordinator
+                    entry_id=entry.entry_id,
+                    api_key=api_key,
+                    entity_description=description,
+                    main_device_id=base_device_id,  # Pass main device ID
+                )
+            )
+
+    # The /api/v1/ade7953/channel endpoint provides channel activity and labels
+    # The /api/v1/ade7953/meter-values endpoint provides the actual data
 
     # Create a map of index to channel label from channel_configs for active channels
     active_channel_labels = {}
@@ -183,36 +293,42 @@ async def async_setup_entry(
     # Assuming meter_data_list is like:
     # [ {"index": 0, "label": "Main", "data": {"voltage": 230, ...}}, ... ]
 
-    # Let's assume for now that the number of items in meter_data_list is fixed (e.g., 17)
-    # and we only light up sensors for those whose index is in active_channel_labels.
+    # EnergyMe device supports up to 17 channels
+    # Only create sensors for active channels
 
     # Instead of iterating meter_data_list (which changes), iterate potential channels
     # and active_channel_labels.
 
-    max_channels_possible = 17 # As per your original TOTAL_CHANNELS
+    # Create sensors for each active channel
+    # Each channel gets its own device that links to the main device via "via_device"
+    # This creates a device hierarchy: Main Device -> Channel Devices -> Sensors
+    max_channels_possible = 17  # EnergyMe device maximum channel count
 
     for channel_index in range(max_channels_possible):
         if channel_index in active_channel_labels:
             channel_label = active_channel_labels[channel_index]
 
-            # For each metric in SENSOR_DESCRIPTIONS, create a sensor
+            # For each enabled metric in SENSOR_DESCRIPTIONS, create a sensor
             for api_key, description in SENSOR_DESCRIPTIONS.items():
-                # Create sensor using central SensorEntityDescription
-                sensors.append(
-                    EnergyMeSensor(
-                        coordinator=coordinator,
-                        entry_id=entry.entry_id,
-                        channel_index=channel_index,
-                        channel_label=channel_label,
-                        api_key=api_key,
-                        entity_description=description,
+                if api_key in enabled_sensors:  # Only create sensors for enabled ones
+                    # Create sensor using central SensorEntityDescription
+                    # Each sensor's device_info will create a separate channel device
+                    # that automatically links to the main device via "via_device"
+                    sensors.append(
+                        EnergyMeSensor(
+                            coordinator=meter_coordinator,  # Use meter coordinator
+                            entry_id=entry.entry_id,
+                            channel_index=channel_index,
+                            channel_label=channel_label,
+                            api_key=api_key,
+                            entity_description=description,
+                        )
                     )
-                )
 
     async_add_entities(sensors)
 
 
-class EnergyMeSensor(CoordinatorEntity, SensorEntity):
+class EnergyMeSensor(CoordinatorEntity, SensorEntity):  # type: ignore[misc]
     """Representation of an EnergyMe Sensor."""
 
     _attr_has_entity_name = True # Use if names are like "Device Friendly Name Sensor Name"
@@ -230,15 +346,26 @@ class EnergyMeSensor(CoordinatorEntity, SensorEntity):
         super().__init__(coordinator)
         self._channel_index = channel_index
         self._api_key = api_key # e.g., "activePower"
+        self._base_sensor_name = entity_description.name  # Store base name for dynamic updates
 
-        # Construct a unique ID: domain_entryid_channelX_apikey
+        # Construct a stable unique ID: domain_entryid_channelX_apikey
+        # This never changes even if user renames channels or changes device settings
         self._attr_unique_id = f"{DOMAIN}_{entry_id}_ch{channel_index}_{api_key}"
 
-        # Create a copy of the provided SensorEntityDescription with a channel-specific name.
-        # SensorEntityDescription is a frozen dataclass, so use dataclasses.replace.
+        # Set entity_id explicitly based on unique_id for maximum stability
+        # Format: sensor.energyme_{entry_id}_ch{channel_index}_{api_key}
+        # This survives channel label changes, ensuring history is preserved
+        self.entity_id = f"sensor.{DOMAIN}_{entry_id}_ch{channel_index}_{api_key.lower()}"
+
+        # Set initial friendly name with channel label
+        # Format: "{channel_label} - {sensor_name}" (e.g., "General - Active Power")
+        # This will be updated dynamically when channel label changes
+        self._attr_name = f"{channel_label} - {self._base_sensor_name}"
+
+        # Create entity description without the channel label in name
+        # The name will be managed via _attr_name for dynamic updates
         self.entity_description = dataclasses.replace(
             entity_description,
-            name=f"{channel_label} {entity_description.name}",
             key=api_key,
         )
 
@@ -255,23 +382,99 @@ class EnergyMeSensor(CoordinatorEntity, SensorEntity):
             elif unit == UnitOfPower.WATT:  # Default power icon
                 self._attr_icon = "mdi:flash"
 
-        # Device Info: Link all sensors to a single device entry
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, entry_id)}, # Matches unique_id of config_entry
-            "name": f"EnergyMe ({coordinator.hass.data[DOMAIN][entry_id].config_entry.data.get(CONF_HOST)})", # Get host from entry data
-            "manufacturer": "Jibril Sharafi",
-            "model": "EnergyMe - Home",
-            # "sw_version": coordinator.data.get("firmware_version"), # If available in coordinator data
-        }
-        # Ensure coordinator.data is not None before accessing
-        # Firmware version might be fetched from /rest/device-info and added to coordinator data
-        # For now, keeping it simple.
+        # Device Info: Create separate device for each channel
+        # This creates the device hierarchy: Main Device -> Channel Devices -> Sensors
+        # The "via_device" parameter automatically links this channel device to the main device
 
-    @property
-    def native_value(self) -> float | None:
-        """Return the state of the sensor."""
+        # Get device info from system coordinator
+        coordinators = coordinator.hass.data[DOMAIN][entry_id]
+        system_coordinator = coordinators["system_coordinator"]
+        device_data = system_coordinator.data.get("device_info", {}) if system_coordinator.data else {}
+
+        # Extract device ID and firmware version from system info structure
+        static_info = device_data.get("static", {})
+        base_device_id = static_info.get("device", {}).get("id") or entry_id
+        firmware_version = static_info.get("firmware", {}).get("buildVersion")
+
+        # Create unique device identifier for this channel using entry_id for stability
+        # Using entry_id ensures device identity remains stable even if hardware changes
+        channel_device_id = f"{entry_id}_ch{channel_index}"
+
+        # Simple device name: "Channel {index} - {label}"
+        # This makes device names clean and focused on the channel itself
+        device_name = f"Channel {channel_index} - {channel_label}"
+
+        # The device_info with "via_device" creates the parent-child relationship
+        # HomeAssistant automatically handles the device creation and linking
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, channel_device_id)},
+            "name": device_name,
+            "manufacturer": AUTHOR,
+            "model": f"{COMPANY} - {MODEL}",
+            "via_device": (DOMAIN, base_device_id),  # This links to the main device created above
+        }
+
+        # Add firmware version if available
+        if firmware_version:
+            self._attr_device_info["sw_version"] = firmware_version
+
+    def _update_native_value(self) -> None:
+        """Update the native value from coordinator data."""
         if not self.coordinator.last_update_success or not self.coordinator.data:
-            return None
+            self._attr_native_value = None
+            self._attr_available = False
+            return
+
+        # Update channel label if it changed on the device
+        channel_configs = self.coordinator.data.get("channels", {})
+        if isinstance(channel_configs, dict) and "channels" in channel_configs:
+            channel_configs = channel_configs["channels"]
+
+        # Normalize to dict if needed
+        if isinstance(channel_configs, list):
+            normalized = {}
+            for item in channel_configs:
+                idx = item.get("index") if isinstance(item, dict) else None
+                if idx is not None:
+                    normalized[str(idx)] = item
+            channel_configs = normalized
+
+        # Get current channel label from device
+        channel_data_config = channel_configs.get(str(self._channel_index), {})
+        if isinstance(channel_data_config, dict):
+            current_label = channel_data_config.get("label", f"Channel {self._channel_index}")
+
+            # Update friendly name if label changed
+            new_name = f"{current_label} - {self._base_sensor_name}"
+            if self._attr_name != new_name:
+                self._attr_name = new_name
+                _LOGGER.debug(
+                    "Updated friendly name for ch%d %s to: %s",
+                    self._channel_index,
+                    self._api_key,
+                    new_name
+                )
+
+            # Update device name if label changed
+            new_device_name = f"Channel {self._channel_index} - {current_label}"
+            if self._attr_device_info and self._attr_device_info.get("name") != new_device_name:
+                self._attr_device_info["name"] = new_device_name
+
+                # Also update in device registry
+                identifiers = self._attr_device_info.get("identifiers")
+                if identifiers:
+                    device_registry = dr.async_get(self.hass)
+                    device = device_registry.async_get_device(identifiers=identifiers)
+                    if device:
+                        device_registry.async_update_device(
+                            device.id,
+                            name=new_device_name
+                        )
+                        _LOGGER.debug(
+                            "Updated device name for ch%d to: %s",
+                            self._channel_index,
+                            new_device_name
+                        )
 
         meter_data_list = self.coordinator.data.get("meter", [])
         # Normalize meter_data_list: accept dict (keyed by index) or list of items
@@ -301,7 +504,8 @@ class EnergyMeSensor(CoordinatorEntity, SensorEntity):
             try:
                 value = float(channel_data[self._api_key])
                 decimals = DECIMALS_MAP.get(self._api_key, DEFAULT_DECIMALS)
-                return round(value, decimals)
+                self._attr_native_value = round(value, decimals)
+                self._attr_available = True
             except (ValueError, TypeError):
                 _LOGGER.warning(
                     "Invalid value for %s on channel %s: %s",
@@ -309,20 +513,120 @@ class EnergyMeSensor(CoordinatorEntity, SensorEntity):
                     self._channel_index,
                     channel_data[self._api_key]
                 )
-                return None
-        return None
+                self._attr_native_value = None
+                self._attr_available = False
+        else:
+            self._attr_native_value = None
+            self._attr_available = True  # Available but no data yet
 
-    @property
-    def available(self) -> bool:
-        """Return if entity is available."""
-        # Available if the coordinator is successful and the specific data point exists
-        if not self.coordinator.last_update_success:
-            return False
-
-        # Check if the specific data point is available (it might not be for some reason)
-        # This is implicitly handled by native_value returning None if data isn't there.
-        # A more explicit check could be added if needed.
-        return super().available
+    def _handle_coordinator_update(self) -> None:
+        """Handle updated data from the coordinator."""
+        self._update_native_value()
+        super()._handle_coordinator_update()
 
     # The name property is now handled by self.entity_description.name and _attr_has_entity_name = True
     # The icon, unit_of_measurement, device_class, state_class are set as _attr_ properties.
+
+
+class EnergyMeSystemSensor(CoordinatorEntity, SensorEntity):  # type: ignore[misc]
+    """Representation of an EnergyMe System Sensor."""
+
+    _attr_has_entity_name = True
+
+    def __init__(
+        self,
+        coordinator: DataUpdateCoordinator,
+        entry_id: str,
+        api_key: str,
+        entity_description: SensorEntityDescription,
+        main_device_id: str,
+    ) -> None:
+        """Initialize the system sensor."""
+        super().__init__(coordinator)
+        self._api_key = api_key
+        self._main_device_id = main_device_id
+
+        # Construct a stable unique ID: domain_entryid_system_apikey
+        self._attr_unique_id = f"{DOMAIN}_{entry_id}_system_{api_key}"
+
+        # Set entity_id explicitly based on unique_id for maximum stability
+        # Format: sensor.energyme_{entry_id}_system_{api_key}
+        self.entity_id = f"sensor.{DOMAIN}_{entry_id}_system_{api_key.lower()}"
+
+        # Use the provided entity description
+        # Entity name will be the friendly name (e.g., "Firmware Version", "Temperature")
+        self.entity_description = entity_description
+
+        # Device Info: Link system sensor to the main device
+        # System sensors (temperature, WiFi, memory, etc.) belong directly to the main device
+        # They use the same identifiers as the main device to attach to it
+        if coordinator.data:
+            device_data = coordinator.data.get("device_info", {})
+            static_info = device_data.get("static", {})
+            firmware_version = static_info.get("firmware", {}).get("buildVersion")
+
+            # Get host from config entry for device name
+            coordinators = coordinator.hass.data[DOMAIN][entry_id]
+            config_entry = coordinators["config_entry"]
+            host = config_entry.data.get(CONF_HOST)
+
+            # Use device ID if available, otherwise fall back to friendly name or host
+            device_name_suffix = self._main_device_id if self._main_device_id != entry_id else host.split('.')[-1] if '.' in host else host
+            device_name = f"{COMPANY} - {MODEL} | {device_name_suffix} - System"
+
+            # Using the same identifiers as the main device links these sensors to it
+            self._attr_device_info = {
+                "identifiers": {(DOMAIN, self._main_device_id)},
+                "name": device_name,
+                "manufacturer": AUTHOR,
+                "model": f"{COMPANY} - {MODEL}",
+            }
+
+            # Add firmware version if available
+            if firmware_version:
+                self._attr_device_info["sw_version"] = firmware_version
+
+    def _update_native_value(self) -> None:
+        """Update the native value from coordinator data."""
+        if not self.coordinator.data:
+            self._attr_native_value = None
+            self._attr_available = False
+            return
+
+        device_info = self.coordinator.data.get("device_info", {})
+        if not device_info:
+            self._attr_native_value = None
+            self._attr_available = False
+            return
+
+        # Extract values based on the API key
+        value = None
+        if self._api_key == "firmware_version":
+            value = device_info.get("static", {}).get("firmware", {}).get("buildVersion")
+        elif self._api_key == "device_id":
+            value = device_info.get("static", {}).get("device", {}).get("id")
+        elif self._api_key == "temperature":
+            temp_value = device_info.get("dynamic", {}).get("performance", {}).get("temperatureCelsius")
+            if temp_value is not None:
+                try:
+                    value = round(float(temp_value), 1)
+                except (ValueError, TypeError):
+                    value = temp_value
+        elif self._api_key == "wifi_rssi":
+            value = device_info.get("dynamic", {}).get("network", {}).get("wifiRssi")
+        elif self._api_key == "heap_free_percentage":
+            heap_info = device_info.get("dynamic", {}).get("memory", {}).get("heap", {})
+            free_percentage = heap_info.get("freePercentage")
+            if free_percentage is not None:
+                try:
+                    value = round(float(free_percentage), 1)
+                except (ValueError, TypeError):
+                    value = free_percentage
+
+        self._attr_native_value = value
+        self._attr_available = self.coordinator.last_update_success and value is not None
+
+    def _handle_coordinator_update(self) -> None:
+        """Handle updated data from the coordinator."""
+        self._update_native_value()
+        super()._handle_coordinator_update()

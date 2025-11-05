@@ -17,6 +17,7 @@ from .const import (
     CONF_PASSWORD,
     DEFAULT_SCAN_INTERVAL,
     CONF_SCAN_INTERVAL,
+    SYSTEM_SCAN_INTERVAL,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -27,16 +28,19 @@ PLATFORMS = ["sensor"]
 
 async def async_update_options_listener(hass: HomeAssistant, entry: ConfigEntry):
     """Handle options update."""
-    coordinator: DataUpdateCoordinator = hass.data[DOMAIN][entry.entry_id]
+    coordinators = hass.data[DOMAIN][entry.entry_id]
+    meter_coordinator: DataUpdateCoordinator = coordinators["meter_coordinator"]
     new_scan_interval = entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
     _LOGGER.debug(
         "Updating scan interval for %s to %s seconds",
         entry.title,
         new_scan_interval,
     )
-    coordinator.update_interval = timedelta(seconds=new_scan_interval)
-    # Optionally, you might want to request a refresh if the interval change should trigger an immediate update
-    # await coordinator.async_request_refresh()
+    # Only update the meter coordinator interval (system coordinator stays at 60 seconds)
+    meter_coordinator.update_interval = timedelta(seconds=new_scan_interval)
+
+    # Reload the entry to update sensor selection
+    await hass.config_entries.async_reload(entry.entry_id)
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -51,11 +55,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Create digest auth object
     auth = HTTPDigestAuth(username, password)
 
-    # Create an API client or coordinator instance
-    async def async_update_data():
-        """Fetch data from API endpoint."""
-        # Note: Using hass.async_add_executor_job for synchronous requests
-        # If your device/API supported asyncio, you'd use session.get directly
+    # Create separate coordinators for meter and system data
+    async def async_update_meter_data():
+        """Fetch meter data from API endpoint."""
         try:
             # Fetch channel configuration using new API endpoint
             channel_config_url = f"http://{host}/api/v1/ade7953/channel"
@@ -87,8 +89,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             raw_meter_data.raise_for_status()
             meter_data = raw_meter_data.json()
 
-            # Combine or structure as needed for sensors
-            # For now, just return both; sensors will pick what they need
             return {"channels": channel_config, "meter": meter_data}
 
         except requests.exceptions.Timeout:
@@ -101,25 +101,71 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             _LOGGER.error("HTTP error from EnergyMe device: %s", err)
             raise UpdateFailed(f"HTTP error from EnergyMe device: {err}")
         except Exception as err:
-            _LOGGER.exception("Unexpected error fetching EnergyMe data")
+            _LOGGER.exception("Unexpected error fetching EnergyMe meter data")
             raise UpdateFailed(f"Unexpected error: {err}")
 
-    coordinator = DataUpdateCoordinator(
+    async def async_update_system_data():
+        """Fetch system data from API endpoint."""
+        try:
+            # Fetch device info for system sensors
+            device_info_url = f"http://{host}/api/v1/system/info"
+
+            def get_device_info():
+                return requests.get(
+                    device_info_url,
+                    auth=auth,
+                    timeout=5,
+                    headers={"accept": "application/json"}
+                )
+
+            raw_device_info = await hass.async_add_executor_job(get_device_info)
+            raw_device_info.raise_for_status()
+            device_info = raw_device_info.json()
+
+            return {"device_info": device_info}
+
+        except requests.exceptions.Timeout:
+            _LOGGER.error("Timeout connecting to EnergyMe device at %s for system data", host)
+            raise UpdateFailed(f"Timeout connecting to EnergyMe device at {host}")
+        except requests.exceptions.ConnectionError:
+            _LOGGER.error("Error connecting to EnergyMe device at %s for system data", host)
+            raise UpdateFailed(f"Error connecting to EnergyMe device at {host}")
+        except requests.exceptions.HTTPError as err:
+            _LOGGER.error("HTTP error from EnergyMe device for system data: %s", err)
+            raise UpdateFailed(f"HTTP error from EnergyMe device: {err}")
+        except Exception as err:
+            _LOGGER.exception("Unexpected error fetching EnergyMe system data")
+            raise UpdateFailed(f"Unexpected error: {err}")
+
+    # Create meter data coordinator (configurable interval)
+    meter_coordinator = DataUpdateCoordinator(
         hass,
         _LOGGER,
-        name=f"{DOMAIN}_coordinator_{host}",
-        update_method=async_update_data,
-        update_interval=timedelta(
-            seconds=scan_interval
-        ),  # Use configured scan_interval
+        name=f"{DOMAIN}_meter_coordinator_{host}",
+        update_method=async_update_meter_data,
+        update_interval=timedelta(seconds=scan_interval),
+    )
+
+    # Create system data coordinator (fixed 60 second interval)
+    system_coordinator = DataUpdateCoordinator(
+        hass,
+        _LOGGER,
+        name=f"{DOMAIN}_system_coordinator_{host}",
+        update_method=async_update_system_data,
+        update_interval=timedelta(seconds=SYSTEM_SCAN_INTERVAL),  # Fixed 1 minute interval
     )
 
     # Fetch initial data so we have it when entities are set up.
     # If the fetch fails, it will raise ConfigEntryNotReady and setup will retry.
-    await coordinator.async_config_entry_first_refresh()
+    await meter_coordinator.async_config_entry_first_refresh()
+    await system_coordinator.async_config_entry_first_refresh()
 
     hass.data.setdefault(DOMAIN, {})
-    hass.data[DOMAIN][entry.entry_id] = coordinator
+    hass.data[DOMAIN][entry.entry_id] = {
+        "meter_coordinator": meter_coordinator,
+        "system_coordinator": system_coordinator,
+        "config_entry": entry,
+    }
 
     # Forward the setup to the sensor platform.
     # Using new method for HA 2022.11+

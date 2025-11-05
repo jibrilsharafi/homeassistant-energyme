@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Connect to EnergyMe",
-        "description": "Enter the hostname/IP address and credentials for your EnergyMe device.",
+        "description": "Enter the hostname/IP address and credentials for your EnergyMe device. If you need help with the configuration have a look here: https://github.com/jibrilsharafi/EnergyMe-Home",
         "data": {
           "host": "Host",
           "username": "Username",
@@ -26,8 +26,13 @@
     "step": {
       "init": {
         "title": "EnergyMe Options",
+        "description": "Configure update frequency and which sensors to enable.",
         "data": {
-          "scan_interval": "Update interval (seconds)"
+          "scan_interval": "Update interval (seconds)",
+          "sensors": "Enabled sensors"
+        },
+        "data_description": {
+          "sensors": "Select which sensor types to enable. At least one sensor must be selected."
         }
       }
     }
