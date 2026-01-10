@@ -28,8 +28,6 @@ from .const import AUTHOR, COMPANY, DOMAIN, CONF_HOST, CONF_SENSORS, DEFAULT_SEN
 
 _LOGGER = logging.getLogger(__name__)
 
-# TODO: add auto discovery via mDNS
-# TODO: test first default credentials (and in any case only ask for the password, the username is always the same)
 # TODO: clean comments and docs
 
 # Define a structure for your sensor types
