@@ -35,7 +35,7 @@ if ($lintPassed) {
 
 # Run hassfest validation
 Write-Host "`nRunning hassfest validation..." -ForegroundColor Green
-docker run --rm -v "${PWD}:/github/workspace" ghcr.io/home-assistant/hassfest
+docker run --rm -v "${PWD}/custom_components:/github/workspace/custom_components" ghcr.io/home-assistant/hassfest
 
 if ($LASTEXITCODE -eq 0) {
     Write-Host "✅ Hassfest validation PASSED" -ForegroundColor Green

@@ -1,5 +1,6 @@
 """Config flow for EnergyMe."""
 import logging
+from typing import Any
 
 import requests
 from requests.auth import HTTPDigestAuth
@@ -8,6 +9,7 @@ import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.core import callback
 from homeassistant.const import CONF_NAME  # If you want to allow naming the device
+from homeassistant.helpers.service_info.zeroconf import ZeroconfServiceInfo
 
 from .const import DOMAIN, CONF_HOST, CONF_USERNAME, CONF_PASSWORD, CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL, CONF_SENSORS, DEFAULT_SENSORS  # Added auth constants
 
@@ -28,6 +30,123 @@ class EnergyMeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     VERSION = 1
     CONNECTION_CLASS = config_entries.CONN_CLASS_LOCAL_POLL
+
+    def __init__(self) -> None:
+        """Initialize the config flow."""
+        self._discovered_host: str | None = None
+        self._discovered_device_id: str | None = None
+        self._discovered_model: str | None = None
+        self._discovered_version: str | None = None
+
+    async def async_step_zeroconf(
+        self, discovery_info: ZeroconfServiceInfo
+    ) -> config_entries.ConfigFlowResult:
+        """Handle zeroconf discovery."""
+        _LOGGER.debug("Zeroconf discovery: %s", discovery_info)
+
+        # Extract information from discovery
+        host = str(discovery_info.host)
+        properties = discovery_info.properties
+
+        # Get device_id from properties for unique identification
+        device_id = properties.get("device_id", "")
+        model = properties.get("model", "Home")
+        version = properties.get("version", "")
+        vendor = properties.get("vendor", "")
+
+        # Verify this is an EnergyMe device
+        if vendor != "EnergyMe":
+            return self.async_abort(reason="not_energyme_device")
+
+        # Store discovered information for later steps
+        self._discovered_host = host
+        self._discovered_device_id = device_id
+        self._discovered_model = model
+        self._discovered_version = version
+
+        # Use device_id as unique identifier if available, otherwise fall back to host
+        unique_id = device_id if device_id else host
+        await self.async_set_unique_id(unique_id)
+        self._abort_if_unique_id_configured(updates={CONF_HOST: host})
+
+        # Set the title for the discovery notification
+        self.context["title_placeholders"] = {
+            "name": f"EnergyMe {model}",
+            "host": host,
+        }
+
+        return await self.async_step_zeroconf_confirm()
+
+    async def async_step_zeroconf_confirm(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """Handle user confirmation of discovered device."""
+        errors = {}
+
+        if user_input is not None:
+            username = user_input[CONF_USERNAME]
+            password = user_input[CONF_PASSWORD]
+            host = self._discovered_host
+
+            try:
+                # Test connection with provided credentials
+                health_url = f"http://{host}/api/v1/health"
+
+                def make_request():
+                    return requests.get(
+                        health_url,
+                        auth=HTTPDigestAuth(username, password),
+                        timeout=5,
+                        headers={"accept": "application/json"}
+                    )
+
+                response = await self.hass.async_add_executor_job(make_request)
+                response.raise_for_status()
+
+                # Create config entry with discovered host
+                data = {
+                    CONF_HOST: host,
+                    CONF_USERNAME: username,
+                    CONF_PASSWORD: password,
+                }
+
+                title = f"EnergyMe {self._discovered_model} @ {host}"
+                return self.async_create_entry(title=title, data=data)
+
+            except requests.exceptions.Timeout:
+                _LOGGER.error("Timeout connecting to %s", host)
+                errors["base"] = "cannot_connect_timeout"
+            except requests.exceptions.ConnectionError:
+                _LOGGER.error("Failed to connect to %s", host)
+                errors["base"] = "cannot_connect"
+            except requests.exceptions.HTTPError as err:
+                _LOGGER.error("HTTP error connecting to %s: %s", host, err)
+                if err.response.status_code == 401:
+                    errors["base"] = "invalid_auth"
+                else:
+                    errors["base"] = "cannot_connect_http"
+            except Exception as e:  # pylint: disable=broad-except
+                _LOGGER.exception("Unexpected exception: %s", e)
+                errors["base"] = "unknown"
+
+        # Schema for zeroconf confirmation - only need credentials
+        zeroconf_schema = vol.Schema(
+            {
+                vol.Required(CONF_USERNAME): str,
+                vol.Required(CONF_PASSWORD): str,
+            }
+        )
+
+        return self.async_show_form(
+            step_id="zeroconf_confirm",
+            data_schema=zeroconf_schema,
+            errors=errors,
+            description_placeholders={
+                "host": self._discovered_host,
+                "model": self._discovered_model,
+                "version": self._discovered_version,
+            },
+        )
 
     async def async_step_user(self, user_input=None):
         """Handle the initial step."""

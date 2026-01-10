@@ -9,6 +9,14 @@
                     "username": "Nome utente",
                     "password": "Password"
                 }
+            },
+            "zeroconf_confirm": {
+                "title": "Dispositivo EnergyMe Rilevato",
+                "description": "È stato rilevato un dispositivo EnergyMe {model} all'indirizzo **{host}** (firmware v{version}).\n\nInserisci le credenziali per connetterti.",
+                "data": {
+                    "username": "Nome utente",
+                    "password": "Password"
+                }
             }
         },
         "error": {
@@ -19,7 +27,8 @@
             "unknown": "Si è verificato un errore sconosciuto."
         },
         "abort": {
-            "already_configured": "Questo dispositivo EnergyMe è già configurato."
+            "already_configured": "Questo dispositivo EnergyMe è già configurato.",
+            "not_energyme_device": "Il dispositivo rilevato non è un dispositivo EnergyMe."
         }
     },
     "options": {
