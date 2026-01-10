@@ -64,10 +64,22 @@ class EnergyMeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._discovered_model = model
         self._discovered_version = version
 
-        # Use device_id as unique identifier if available, otherwise fall back to host
-        unique_id = device_id if device_id else host
-        await self.async_set_unique_id(unique_id)
-        self._abort_if_unique_id_configured(updates={CONF_HOST: host})
+        # Check if already configured by device_id (new method) or host (legacy)
+        # This ensures backward compatibility with existing installations
+        if device_id:
+            await self.async_set_unique_id(device_id)
+            self._abort_if_unique_id_configured(updates={CONF_HOST: host})
+
+        # Also check for legacy entries that used host as unique_id
+        for entry in self._async_current_entries():
+            if entry.data.get(CONF_HOST) == host:
+                # Found existing entry by host - update its unique_id if needed
+                return self.async_abort(reason="already_configured")
+
+        # If no device_id available, fall back to host
+        if not device_id:
+            await self.async_set_unique_id(host)
+            self._abort_if_unique_id_configured()
 
         # Set the title for the discovery notification
         self.context["title_placeholders"] = {
@@ -90,11 +102,12 @@ class EnergyMeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
             try:
                 # Test connection with provided credentials
-                health_url = f"http://{host}/api/v1/health"
+                # Use /api/v1/system/info which requires authentication (unlike /health)
+                info_url = f"http://{host}/api/v1/system/info"
 
                 def make_request():
                     return requests.get(
-                        health_url,
+                        info_url,
                         auth=HTTPDigestAuth(username, password),
                         timeout=5,
                         headers={"accept": "application/json"}
@@ -156,14 +169,14 @@ class EnergyMeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             username = user_input[CONF_USERNAME]
             password = user_input[CONF_PASSWORD]
             try:
-                # Test connection - use /api/v1/health with digest auth
-                # We need to run this in an executor since requests is blocking
-                health_url = f"http://{host}/api/v1/health"
+                # Test connection - use /api/v1/system/info which requires authentication
+                # (unlike /health which is public)
+                info_url = f"http://{host}/api/v1/system/info"
 
                 # Using hass.async_add_executor_job for synchronous requests with digest auth
                 def make_request():
                     return requests.get(
-                        health_url,
+                        info_url,
                         auth=HTTPDigestAuth(username, password),
                         timeout=5,
                         headers={"accept": "application/json"}
@@ -172,15 +185,14 @@ class EnergyMeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 response = await self.hass.async_add_executor_job(make_request)
                 response.raise_for_status()  # Raise HTTPError for bad responses (4xx or 5xx)
 
-                # Check response content for the health endpoint
-                health_data = response.json()
-                if health_data.get("status") != "ok":
-                    _LOGGER.warning("Health check returned non-ok status: %s", health_data.get("status"))
+                # Get device_id from system info for unique identification
+                system_info = response.json()
+                device_id = system_info.get("static", {}).get("device", {}).get("id", "")
 
                 # Set a unique ID for the config entry to prevent duplicates
-                # You could use a device MAC address or serial if available from an info endpoint
-                # For now, host is unique enough for this purpose.
-                await self.async_set_unique_id(host)
+                # Use device_id if available, otherwise fall back to host
+                unique_id = device_id if device_id else host
+                await self.async_set_unique_id(unique_id)
                 self._abort_if_unique_id_configured()
 
                 return self.async_create_entry(

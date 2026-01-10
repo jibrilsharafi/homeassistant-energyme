@@ -12,7 +12,7 @@
             },
             "zeroconf_confirm": {
                 "title": "Dispositivo EnergyMe Rilevato",
-                "description": "È stato rilevato un dispositivo EnergyMe {model} all'indirizzo **{host}** (firmware v{version}).\n\nInserisci le credenziali per connetterti.",
+                "description": "Trovato un **EnergyMe {model}** pronto a farti risparmiare all'indirizzo **{host}**! \n\nInserisci le credenziali per iniziare il monitoraggio.",
                 "data": {
                     "username": "Nome utente",
                     "password": "Password"

@@ -12,7 +12,7 @@
       },
       "zeroconf_confirm": {
         "title": "EnergyMe Device Discovered",
-        "description": "An EnergyMe {model} device was discovered at **{host}** (firmware v{version}).\n\nPlease enter the credentials to connect.",
+        "description": "Found an **EnergyMe {model}** ready to save you money at **{host}**! \n\nEnter your credentials to start monitoring.",
         "data": {
           "username": "Username",
           "password": "Password"
