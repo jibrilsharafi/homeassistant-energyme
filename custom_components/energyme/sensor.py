@@ -176,7 +176,7 @@ SYSTEM_SENSOR_DESCRIPTIONS: dict[str, SensorEntityDescription] = {
         name="Uptime",
         native_unit_of_measurement="d",
         device_class=None,
-        state_class=SensorStateClass.TOTAL_INCREASING,
+        state_class=SensorStateClass.MEASUREMENT,
         icon="mdi:clock-outline",
         entity_category=EntityCategory.DIAGNOSTIC,
     ),

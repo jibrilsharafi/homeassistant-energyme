@@ -38,6 +38,44 @@ class EnergyMeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._discovered_model: str | None = None
         self._discovered_version: str | None = None
 
+    async def _test_connection(
+        self, host: str, username: str, password: str
+    ) -> tuple[dict[str, Any] | None, str | None]:
+        """Test connection to device and return system info.
+
+        Returns:
+            Tuple of (system_info dict, None) on success, or (None, error_key) on failure.
+        """
+        try:
+            info_url = f"http://{host}/api/v1/system/info"
+
+            def make_request():
+                return requests.get(
+                    info_url,
+                    auth=HTTPDigestAuth(username, password),
+                    timeout=5,
+                    headers={"accept": "application/json"}
+                )
+
+            response = await self.hass.async_add_executor_job(make_request)
+            response.raise_for_status()
+            return response.json(), None
+
+        except requests.exceptions.Timeout:
+            _LOGGER.error("Timeout connecting to %s", host)
+            return None, "cannot_connect_timeout"
+        except requests.exceptions.ConnectionError:
+            _LOGGER.error("Failed to connect to %s", host)
+            return None, "cannot_connect"
+        except requests.exceptions.HTTPError as err:
+            _LOGGER.error("HTTP error connecting to %s: %s", host, err)
+            if err.response.status_code == 401:
+                return None, "invalid_auth"
+            return None, "cannot_connect_http"
+        except Exception as e:  # pylint: disable=broad-except
+            _LOGGER.exception("Unexpected exception: %s", e)
+            return None, "unknown"
+
     async def async_step_zeroconf(
         self, discovery_info: ZeroconfServiceInfo
     ) -> config_entries.ConfigFlowResult:
@@ -55,7 +93,7 @@ class EnergyMeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         vendor = properties.get("vendor", "")
 
         # Verify this is an EnergyMe device
-        if vendor != "EnergyMe":
+        if vendor.lower() != "energyme":
             return self.async_abort(reason="not_energyme_device")
 
         # Store discovered information for later steps
@@ -100,22 +138,12 @@ class EnergyMeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             password = user_input[CONF_PASSWORD]
             host = self._discovered_host
 
-            try:
-                # Test connection with provided credentials
-                # Use /api/v1/system/info which requires authentication (unlike /health)
-                info_url = f"http://{host}/api/v1/system/info"
+            # Test connection with provided credentials
+            _, error = await self._test_connection(host, username, password)
 
-                def make_request():
-                    return requests.get(
-                        info_url,
-                        auth=HTTPDigestAuth(username, password),
-                        timeout=5,
-                        headers={"accept": "application/json"}
-                    )
-
-                response = await self.hass.async_add_executor_job(make_request)
-                response.raise_for_status()
-
+            if error:
+                errors["base"] = error
+            else:
                 # Create config entry with discovered host
                 data = {
                     CONF_HOST: host,
@@ -125,22 +153,6 @@ class EnergyMeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
                 title = f"EnergyMe {self._discovered_model} @ {host}"
                 return self.async_create_entry(title=title, data=data)
-
-            except requests.exceptions.Timeout:
-                _LOGGER.error("Timeout connecting to %s", host)
-                errors["base"] = "cannot_connect_timeout"
-            except requests.exceptions.ConnectionError:
-                _LOGGER.error("Failed to connect to %s", host)
-                errors["base"] = "cannot_connect"
-            except requests.exceptions.HTTPError as err:
-                _LOGGER.error("HTTP error connecting to %s: %s", host, err)
-                if err.response.status_code == 401:
-                    errors["base"] = "invalid_auth"
-                else:
-                    errors["base"] = "cannot_connect_http"
-            except Exception as e:  # pylint: disable=broad-except
-                _LOGGER.exception("Unexpected exception: %s", e)
-                errors["base"] = "unknown"
 
         # Schema for zeroconf confirmation - only need credentials
         zeroconf_schema = vol.Schema(
@@ -168,25 +180,14 @@ class EnergyMeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             host = user_input[CONF_HOST]
             username = user_input[CONF_USERNAME]
             password = user_input[CONF_PASSWORD]
-            try:
-                # Test connection - use /api/v1/system/info which requires authentication
-                # (unlike /health which is public)
-                info_url = f"http://{host}/api/v1/system/info"
 
-                # Using hass.async_add_executor_job for synchronous requests with digest auth
-                def make_request():
-                    return requests.get(
-                        info_url,
-                        auth=HTTPDigestAuth(username, password),
-                        timeout=5,
-                        headers={"accept": "application/json"}
-                    )
+            # Test connection with provided credentials
+            system_info, error = await self._test_connection(host, username, password)
 
-                response = await self.hass.async_add_executor_job(make_request)
-                response.raise_for_status()  # Raise HTTPError for bad responses (4xx or 5xx)
-
+            if error:
+                errors["base"] = error
+            else:
                 # Get device_id from system info for unique identification
-                system_info = response.json()
                 device_id = system_info.get("static", {}).get("device", {}).get("id", "")
 
                 # Set a unique ID for the config entry to prevent duplicates
@@ -198,22 +199,6 @@ class EnergyMeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 return self.async_create_entry(
                     title=user_input.get(CONF_NAME, f"EnergyMe @ {host}"), data=user_input
                 )
-
-            except requests.exceptions.Timeout:
-                _LOGGER.error("Timeout connecting to %s", host)
-                errors["base"] = "cannot_connect_timeout"
-            except requests.exceptions.ConnectionError:
-                _LOGGER.error("Failed to connect to %s", host)
-                errors["base"] = "cannot_connect"
-            except requests.exceptions.HTTPError as err:
-                _LOGGER.error("HTTP error connecting to %s: %s", host, err)
-                if err.response.status_code == 401:
-                    errors["base"] = "invalid_auth"
-                else:
-                    errors["base"] = "cannot_connect_http"  # Generic HTTP error
-            except Exception as e:  # pylint: disable=broad-except
-                _LOGGER.exception("Unexpected exception: %s", e)
-                errors["base"] = "unknown"
 
         return self.async_show_form(
             step_id="user", data_schema=DATA_SCHEMA, errors=errors
