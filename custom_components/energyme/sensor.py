@@ -29,6 +29,7 @@ from .const import AUTHOR, COMPANY, DOMAIN, CONF_HOST, CONF_SENSORS, DEFAULT_SEN
 _LOGGER = logging.getLogger(__name__)
 
 # TODO: clean comments and docs
+# TODO: add control for LED (can we add only brigthness or also fun RGB?)
 
 # Define a structure for your sensor types
 # (API Key, Friendly Name Suffix, Unit, Device Class, State Class, Icon (optional))
@@ -168,6 +169,33 @@ SYSTEM_SENSOR_DESCRIPTIONS: dict[str, SensorEntityDescription] = {
         device_class=None,
         state_class=SensorStateClass.MEASUREMENT,
         icon="mdi:memory",
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    "uptime": SensorEntityDescription(
+        key="uptime",
+        name="Uptime",
+        native_unit_of_measurement="d",
+        device_class=None,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        icon="mdi:clock-outline",
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    "storage_free": SensorEntityDescription(
+        key="storage_free",
+        name="Storage Space Available",
+        native_unit_of_measurement="%",
+        device_class=None,
+        state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:harddisk",
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    "update_available": SensorEntityDescription(
+        key="update_available",
+        name="Firmware Update Available",
+        native_unit_of_measurement=None,
+        device_class=None,
+        state_class=None,
+        icon="mdi:cloud-download-outline",
         entity_category=EntityCategory.DIAGNOSTIC,
     ),
 }
@@ -584,6 +612,9 @@ class EnergyMeSystemSensor(CoordinatorEntity, SensorEntity):  # type: ignore[mis
             if firmware_version:
                 self._attr_device_info["sw_version"] = firmware_version
 
+        # Initialize native value from already-fetched coordinator data
+        self._update_native_value()
+
     def _update_native_value(self) -> None:
         """Update the native value from coordinator data."""
         if not self.coordinator.data:
@@ -607,7 +638,10 @@ class EnergyMeSystemSensor(CoordinatorEntity, SensorEntity):  # type: ignore[mis
             temp_value = device_info.get("dynamic", {}).get("performance", {}).get("temperatureCelsius")
             if temp_value is not None:
                 try:
-                    value = round(float(temp_value), 1)
+                    # Round down to nearest 0.5°C (floor function) to have less data points in HA
+                    import math
+                    temp_float = float(temp_value)
+                    value = math.floor(temp_float * 2) / 2
                 except (ValueError, TypeError):
                     value = temp_value
         elif self._api_key == "wifi_rssi":
@@ -620,6 +654,30 @@ class EnergyMeSystemSensor(CoordinatorEntity, SensorEntity):  # type: ignore[mis
                     value = round(float(free_percentage), 1)
                 except (ValueError, TypeError):
                     value = free_percentage
+        elif self._api_key == "uptime":
+            uptime_seconds = device_info.get("dynamic", {}).get("time", {}).get("uptimeSeconds")
+            if uptime_seconds is not None:
+                try:
+                    # Convert seconds to days, round to 1 decimal place
+                    value = round(float(uptime_seconds) / 86400, 1)
+                except (ValueError, TypeError):
+                    value = uptime_seconds
+        elif self._api_key == "storage_free":
+            littlefs_info = device_info.get("dynamic", {}).get("storage", {}).get("littlefs", {})
+            free_percentage = littlefs_info.get("freePercentage")
+            if free_percentage is not None:
+                try:
+                    # Round down to nearest 0.5%
+                    import math
+                    value = math.floor(float(free_percentage) * 2) / 2
+                except (ValueError, TypeError):
+                    value = free_percentage
+        elif self._api_key == "update_available":
+            # Check if firmware update is available
+            # update_info is at the top level of coordinator data
+            update_info = self.coordinator.data.get("update_info", {}) if self.coordinator.data else {}
+            is_latest = update_info.get("isLatest", True)
+            value = "No" if is_latest else "Yes"
 
         self._attr_native_value = value
         self._attr_available = self.coordinator.last_update_success and value is not None

@@ -122,7 +122,23 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             raw_device_info.raise_for_status()
             device_info = raw_device_info.json()
 
-            return {"device_info": device_info}
+            # Fetch update info
+            update_info_url = f"http://{host}/api/v1/firmware/update-info"
+
+            def get_update_info():
+                return requests.get(
+                    update_info_url,
+                    auth=auth,
+                    timeout=5,
+                    headers={"accept": "application/json"}
+                )
+
+            raw_update_info = await hass.async_add_executor_job(get_update_info)
+            raw_update_info.raise_for_status()
+            update_info = raw_update_info.json()
+
+            # Combine the data
+            return {"device_info": device_info, "update_info": update_info}
 
         except requests.exceptions.Timeout:
             _LOGGER.error("Timeout connecting to EnergyMe device at %s for system data", host)
