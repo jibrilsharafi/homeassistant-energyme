@@ -45,6 +45,7 @@ class EnergyMeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         Returns:
             Tuple of (system_info dict, None) on success, or (None, error_key) on failure.
+
         """
         try:
             info_url = f"http://{host}/api/v1/system/info"
