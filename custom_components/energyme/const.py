@@ -10,7 +10,7 @@ CONF_USERNAME = "username"
 CONF_PASSWORD = "password"
 DEFAULT_SCAN_INTERVAL = 10 # Seconds - for meter data
 CONF_SCAN_INTERVAL = "scan_interval" # Added for options flow
-SYSTEM_SCAN_INTERVAL = 60 # Seconds - fixed interval for system sensors (temperature, wifi, memory)
+SYSTEM_SCAN_INTERVAL = 900 # Seconds (15 minutes) - fixed interval for system sensors (not critical data)
 
 # Sensor selection configuration
 CONF_SENSORS = "sensors"
@@ -29,4 +29,7 @@ SYSTEM_SENSORS = [
     "temperature",
     "wifi_rssi",
     "heap_free_percentage",
+    "uptime",
+    "storage_free",
+    "update_available",
 ]

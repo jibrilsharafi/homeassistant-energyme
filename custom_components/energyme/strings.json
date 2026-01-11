@@ -9,6 +9,14 @@
           "username": "Username",
           "password": "Password"
         }
+      },
+      "zeroconf_confirm": {
+        "title": "EnergyMe Device Discovered",
+        "description": "Found an **EnergyMe {model}** ready to save you money at **{host}**! \n\nEnter your credentials to start monitoring.",
+        "data": {
+          "username": "Username",
+          "password": "Password"
+        }
       }
     },
     "error": {
@@ -19,7 +27,8 @@
       "unknown": "An unknown error occurred."
     },
     "abort": {
-      "already_configured": "This EnergyMe device is already configured."
+      "already_configured": "This EnergyMe device is already configured.",
+      "not_energyme_device": "The discovered device is not an EnergyMe device."
     }
   },
   "options": {

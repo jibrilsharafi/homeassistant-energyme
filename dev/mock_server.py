@@ -4,6 +4,7 @@ This server provides mock responses for development and testing of the EnergyMe 
 """
 import time
 from flask import Flask, jsonify, request
+import numpy as np
 
 app = Flask(__name__)
 
@@ -265,17 +266,17 @@ def get_meter_values():
     def get_single_meter_values(channel_index):
         """Generate meter values for a single channel."""
         return {
-            "voltage": 230.5 + (channel_index * 0.1),  # Slight variation per channel
-            "current": 5.2 + (channel_index * 0.2),
-            "activePower": 1198.6 + (channel_index * 10),
-            "reactivePower": 120.3 + (channel_index * 2),
-            "apparentPower": 1204.8 + (channel_index * 10.1),
-            "powerFactor": 0.99 - (channel_index * 0.001),
-            "activeEnergyImported": 1234.56 + (channel_index * 100),
-            "activeEnergyExported": 12.34 + (channel_index * 1),
-            "reactiveEnergyImported": 567.89 + (channel_index * 50),
-            "reactiveEnergyExported": 5.67 + (channel_index * 0.5),
-            "apparentEnergy": 1235.67 + (channel_index * 100.1)
+            "voltage": 230.5 + (channel_index * 0.1) + np.random.normal(0, 1),  # Slight variation per channel and randomness
+            "current": 5.2 + (channel_index * 0.2) + np.random.normal(0, 0.1),
+            "activePower": 1198.6 + (channel_index * 10) + np.random.normal(0, 5),
+            "reactivePower": 120.3 + (channel_index * 2) + np.random.normal(0, 2),
+            "apparentPower": 1204.8 + (channel_index * 10.1) + np.random.normal(0, 5),
+            "powerFactor": 0.99 - (channel_index * 0.001) + np.random.normal(0, 0.005),
+            "activeEnergyImported": 1234.56 + (channel_index * 100) + np.random.normal(0, 10),
+            "activeEnergyExported": 12.34 + (channel_index * 1) + np.random.normal(0, 1),
+            "reactiveEnergyImported": 567.89 + (channel_index * 50) + np.random.normal(0, 5),
+            "reactiveEnergyExported": 5.67 + (channel_index * 0.5) + np.random.normal(0, 0.5),
+            "apparentEnergy": 1235.67 + (channel_index * 100.1) + np.random.normal(0, 10)
         }
 
     if index is not None:
