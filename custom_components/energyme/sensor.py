@@ -640,8 +640,7 @@ class EnergyMeSystemSensor(CoordinatorEntity, SensorEntity):  # type: ignore[mis
                 try:
                     # Round down to nearest 0.5°C (floor function) to have less data points in HA
                     import math
-                    temp_float = float(temp_value)
-                    value = math.floor(temp_float * 2) / 2
+                    value = math.floor(float(temp_value) * 2) / 2
                 except (ValueError, TypeError):
                     value = temp_value
         elif self._api_key == "wifi_rssi":
@@ -651,7 +650,9 @@ class EnergyMeSystemSensor(CoordinatorEntity, SensorEntity):  # type: ignore[mis
             free_percentage = heap_info.get("freePercentage")
             if free_percentage is not None:
                 try:
-                    value = round(float(free_percentage), 1)
+                    import math
+                    # Round down to nearest 0.5%
+                    value = math.floor(float(free_percentage) * 2) / 2
                 except (ValueError, TypeError):
                     value = free_percentage
         elif self._api_key == "uptime":
