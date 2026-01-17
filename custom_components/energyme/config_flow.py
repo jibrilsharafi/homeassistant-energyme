@@ -8,10 +8,19 @@ import voluptuous as vol
 
 from homeassistant import config_entries
 from homeassistant.core import callback
-from homeassistant.const import CONF_NAME  # If you want to allow naming the device
+from homeassistant.const import CONF_NAME
 from homeassistant.helpers.service_info.zeroconf import ZeroconfServiceInfo
 
-from .const import DOMAIN, CONF_HOST, CONF_USERNAME, CONF_PASSWORD, CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL, CONF_SENSORS, DEFAULT_SENSORS  # Added auth constants
+from .const import (
+    DOMAIN, 
+    CONF_HOST, 
+    CONF_USERNAME, 
+    CONF_PASSWORD, 
+    CONF_SCAN_INTERVAL, 
+    DEFAULT_SCAN_INTERVAL, 
+    CONF_SENSORS, 
+    DEFAULT_SENSORS
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -20,7 +29,6 @@ DATA_SCHEMA = vol.Schema(
         vol.Required(CONF_HOST): str,
         vol.Required(CONF_USERNAME): str,
         vol.Required(CONF_PASSWORD): str,
-        # vol.Optional(CONF_NAME, default="EnergyMe"): str, # Optional: allow user to name it
     }
 )
 
@@ -37,6 +45,7 @@ class EnergyMeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._discovered_device_id: str | None = None
         self._discovered_model: str | None = None
         self._discovered_version: str | None = None
+        self._reauth_entry: config_entries.ConfigEntry | None = None
 
     async def _test_connection(
         self, host: str, username: str, password: str
@@ -45,7 +54,6 @@ class EnergyMeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         Returns:
             Tuple of (system_info dict, None) on success, or (None, error_key) on failure.
-
         """
         try:
             info_url = f"http://{host}/api/v1/system/info"
@@ -73,9 +81,146 @@ class EnergyMeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             if err.response.status_code == 401:
                 return None, "invalid_auth"
             return None, "cannot_connect_http"
-        except Exception as e:  # pylint: disable=broad-except
+        except Exception as e:
             _LOGGER.exception("Unexpected exception: %s", e)
             return None, "unknown"
+
+    async def async_step_reconfigure(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """Handle reconfiguration of the integration."""
+        entry = self.hass.config_entries.async_get_entry(self.context["entry_id"])
+        if not entry:
+            return self.async_abort(reason="reconfigure_failed")
+
+        errors = {}
+
+        if user_input is not None:
+            host = user_input[CONF_HOST]
+            username = user_input[CONF_USERNAME]
+            password = user_input[CONF_PASSWORD]
+
+            # Test connection with new credentials
+            system_info, error = await self._test_connection(host, username, password)
+
+            if error:
+                errors["base"] = error
+            else:
+                # Verify this is the same device by checking device_id
+                new_device_id = system_info.get("static", {}).get("device", {}).get("id", "")
+                old_device_id = entry.unique_id
+
+                # If device has a device_id, verify it matches
+                if new_device_id and old_device_id and new_device_id != old_device_id:
+                    errors["base"] = "device_mismatch"
+                    _LOGGER.error(
+                        "Device ID mismatch: expected %s, got %s",
+                        old_device_id,
+                        new_device_id
+                    )
+                else:
+                    # Update the config entry with new connection details
+                    self.hass.config_entries.async_update_entry(
+                        entry,
+                        data={
+                            **entry.data,
+                            CONF_HOST: host,
+                            CONF_USERNAME: username,
+                            CONF_PASSWORD: password,
+                        }
+                    )
+                    
+                    # Reload the entry to apply changes
+                    await self.hass.config_entries.async_reload(entry.entry_id)
+                    
+                    return self.async_abort(reason="reconfigure_successful")
+
+        # Pre-fill with current values
+        current_host = entry.data.get(CONF_HOST, "")
+        current_username = entry.data.get(CONF_USERNAME, "")
+
+        reconfigure_schema = vol.Schema(
+            {
+                vol.Required(CONF_HOST, default=current_host): str,
+                vol.Required(CONF_USERNAME, default=current_username): str,
+                vol.Required(CONF_PASSWORD): str,
+            }
+        )
+
+        return self.async_show_form(
+            step_id="reconfigure",
+            data_schema=reconfigure_schema,
+            errors=errors,
+            description_placeholders={
+                "device_id": entry.unique_id or "unknown",
+            }
+        )
+
+    async def async_step_reauth(
+        self, entry_data: dict[str, Any]
+    ) -> config_entries.ConfigFlowResult:
+        """Handle reauthorization request."""
+        self._reauth_entry = self.hass.config_entries.async_get_entry(
+            self.context["entry_id"]
+        )
+        return await self.async_step_reauth_confirm()
+
+    async def async_step_reauth_confirm(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """Handle reauthorization confirmation."""
+        errors = {}
+
+        if user_input is not None:
+            username = user_input[CONF_USERNAME]
+            password = user_input[CONF_PASSWORD]
+            
+            # Use the existing host from the config entry
+            host = self._reauth_entry.data[CONF_HOST]
+
+            # Test connection with new credentials
+            system_info, error = await self._test_connection(host, username, password)
+
+            if error:
+                errors["base"] = error
+            else:
+                # Verify this is the same device
+                new_device_id = system_info.get("static", {}).get("device", {}).get("id", "")
+                old_device_id = self._reauth_entry.unique_id
+
+                if new_device_id and old_device_id and new_device_id != old_device_id:
+                    errors["base"] = "device_mismatch"
+                else:
+                    # Update credentials
+                    self.hass.config_entries.async_update_entry(
+                        self._reauth_entry,
+                        data={
+                            **self._reauth_entry.data,
+                            CONF_USERNAME: username,
+                            CONF_PASSWORD: password,
+                        }
+                    )
+                    
+                    await self.hass.config_entries.async_reload(self._reauth_entry.entry_id)
+                    return self.async_abort(reason="reauth_successful")
+
+        current_username = self._reauth_entry.data.get(CONF_USERNAME, "")
+        
+        reauth_schema = vol.Schema(
+            {
+                vol.Required(CONF_USERNAME, default=current_username): str,
+                vol.Required(CONF_PASSWORD): str,
+            }
+        )
+
+        return self.async_show_form(
+            step_id="reauth_confirm",
+            data_schema=reauth_schema,
+            errors=errors,
+            description_placeholders={
+                "host": self._reauth_entry.data.get(CONF_HOST, ""),
+            }
+        )
 
     async def async_step_zeroconf(
         self, discovery_info: ZeroconfServiceInfo
@@ -103,8 +248,7 @@ class EnergyMeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._discovered_model = model
         self._discovered_version = version
 
-        # Check if already configured by device_id (new method) or host (legacy)
-        # This ensures backward compatibility with existing installations
+        # Check if already configured by device_id
         if device_id:
             await self.async_set_unique_id(device_id)
             self._abort_if_unique_id_configured(updates={CONF_HOST: host})
@@ -112,7 +256,6 @@ class EnergyMeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         # Also check for legacy entries that used host as unique_id
         for entry in self._async_current_entries():
             if entry.data.get(CONF_HOST) == host:
-                # Found existing entry by host - update its unique_id if needed
                 return self.async_abort(reason="already_configured")
 
         # If no device_id available, fall back to host
@@ -271,7 +414,7 @@ class EnergyMeOptionsFlowHandler(config_entries.OptionsFlow):
         sensor_schema = {}
         for sensor_key, sensor_name in sensor_options.items():
             sensor_schema[vol.Optional(
-                sensor_name,  # Use the friendly name as the field key
+                sensor_name,
                 default=sensor_key in current_sensors
             )] = bool
 

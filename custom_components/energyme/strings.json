@@ -17,6 +17,23 @@
           "username": "Username",
           "password": "Password"
         }
+      },
+      "reconfigure": {
+        "title": "Reconfigure EnergyMe Device",
+        "description": "Update connection details for your EnergyMe device.\n\n**Device ID:** {device_id}\n\nYou can change the IP address (if the device moved to a new IP) or update the credentials. All your historical data will be preserved.",
+        "data": {
+          "host": "Host",
+          "username": "Username",
+          "password": "Password"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Reauthenticate EnergyMe Device",
+        "description": "The credentials for your EnergyMe device at **{host}** are no longer valid. Please enter the new credentials to continue monitoring.\n\nYour historical data will be preserved.",
+        "data": {
+          "username": "Username",
+          "password": "Password"
+        }
       }
     },
     "error": {
@@ -24,11 +41,15 @@
       "cannot_connect_timeout": "Connection to the EnergyMe device timed out. Check if it's online and the host is correct.",
       "cannot_connect_http": "Received an HTTP error from the EnergyMe device. Check logs for details.",
       "invalid_auth": "Authentication failed. Check your username and password.",
+      "device_mismatch": "This device has a different ID than the one you're trying to reconfigure. Please ensure you're connecting to the correct device.",
       "unknown": "An unknown error occurred."
     },
     "abort": {
       "already_configured": "This EnergyMe device is already configured.",
-      "not_energyme_device": "The discovered device is not an EnergyMe device."
+      "not_energyme_device": "The discovered device is not an EnergyMe device.",
+      "reconfigure_successful": "Device reconfigured successfully! The integration has been reloaded with the new connection details.",
+      "reauth_successful": "Authentication successful! The integration has been reloaded.",
+      "reconfigure_failed": "Failed to reconfigure the device. Please try again."
     }
   },
   "options": {

@@ -17,6 +17,23 @@
                     "username": "Nome utente",
                     "password": "Password"
                 }
+            },
+            "reconfigure": {
+                "title": "Riconfigura Dispositivo EnergyMe",
+                "description": "Aggiorna i dettagli di connessione per il tuo dispositivo EnergyMe.\n\n**ID Dispositivo:** {device_id}\n\nPuoi cambiare l'indirizzo IP (se il dispositivo si è spostato su un nuovo IP) o aggiornare le credenziali. Tutti i tuoi dati storici saranno preservati.",
+                "data": {
+                    "host": "Host",
+                    "username": "Nome utente",
+                    "password": "Password"
+                }
+            },
+            "reauth_confirm": {
+                "title": "Riautentica Dispositivo EnergyMe",
+                "description": "Le credenziali per il tuo dispositivo EnergyMe all'indirizzo **{host}** non sono più valide. Inserisci le nuove credenziali per continuare il monitoraggio.\n\nI tuoi dati storici saranno preservati.",
+                "data": {
+                    "username": "Nome utente",
+                    "password": "Password"
+                }
             }
         },
         "error": {
@@ -24,11 +41,15 @@
             "cannot_connect_timeout": "La connessione al dispositivo EnergyMe è scaduta. Verifica che sia online e che l'host sia corretto.",
             "cannot_connect_http": "Ricevuto un errore HTTP dal dispositivo EnergyMe. Controlla i log per i dettagli.",
             "invalid_auth": "Autenticazione fallita. Controlla nome utente e password.",
+            "device_mismatch": "Questo dispositivo ha un ID diverso da quello che stai cercando di riconfigurare. Assicurati di connetterti al dispositivo corretto.",
             "unknown": "Si è verificato un errore sconosciuto."
         },
         "abort": {
             "already_configured": "Questo dispositivo EnergyMe è già configurato.",
-            "not_energyme_device": "Il dispositivo rilevato non è un dispositivo EnergyMe."
+            "not_energyme_device": "Il dispositivo rilevato non è un dispositivo EnergyMe.",
+            "reconfigure_successful": "Dispositivo riconfigurato con successo! L'integrazione è stata ricaricata con i nuovi dettagli di connessione.",
+            "reauth_successful": "Autenticazione riuscita! L'integrazione è stata ricaricata.",
+            "reconfigure_failed": "Impossibile riconfigurare il dispositivo. Riprova."
         }
     },
     "options": {

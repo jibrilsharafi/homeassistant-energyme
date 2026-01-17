@@ -30,6 +30,8 @@ _LOGGER = logging.getLogger(__name__)
 
 # TODO: clean comments and docs
 # TODO: add control for LED (can we add only brigthness or also fun RGB?)
+# TODO: Add the IP address to the system info
+# TODO: ensure that if the IP changes, the device is still recognized as the same device (use device ID from system info)
 
 # Define a structure for your sensor types
 # (API Key, Friendly Name Suffix, Unit, Device Class, State Class, Icon (optional))

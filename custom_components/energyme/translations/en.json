@@ -1,49 +1,70 @@
 {
-    "config": {
-        "step": {
-            "user": {
-                "title": "Connect to EnergyMe",
-                "description": "Enter the hostname/IP address and credentials for your EnergyMe device. If you need help with the configuration have a look here: https://github.com/jibrilsharafi/EnergyMe-Home",
-                "data": {
-                    "host": "Host",
-                    "username": "Username",
-                    "password": "Password"
-                }
-            },
-            "zeroconf_confirm": {
-                "title": "EnergyMe Device Discovered",
-                "description": "Found an **EnergyMe {model}** ready to save you money at **{host}**! \n\nEnter your credentials to start monitoring.",
-                "data": {
-                    "username": "Username",
-                    "password": "Password"
-                }
-            }
-        },
-        "error": {
-            "cannot_connect": "Failed to connect to the EnergyMe device. Check the host and network.",
-            "cannot_connect_timeout": "Connection to the EnergyMe device timed out. Check if it's online and the host is correct.",
-            "cannot_connect_http": "Received an HTTP error from the EnergyMe device. Check logs for details.",
-            "invalid_auth": "Authentication failed. Check your username and password.",
-            "unknown": "An unknown error occurred."
-        },
-        "abort": {
-            "already_configured": "This EnergyMe device is already configured.",
-            "not_energyme_device": "The discovered device is not an EnergyMe device."
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to EnergyMe",
+        "description": "Enter the hostname/IP address and credentials for your EnergyMe device. If you need help with the configuration have a look here: https://github.com/jibrilsharafi/EnergyMe-Home",
+        "data": {
+          "host": "Host",
+          "username": "Username",
+          "password": "Password"
         }
+      },
+      "zeroconf_confirm": {
+        "title": "EnergyMe Device Discovered",
+        "description": "Found an **EnergyMe {model}** ready to save you money at **{host}**! \n\nEnter your credentials to start monitoring.",
+        "data": {
+          "username": "Username",
+          "password": "Password"
+        }
+      },
+      "reconfigure": {
+        "title": "Reconfigure EnergyMe Device",
+        "description": "Update connection details for your EnergyMe device.\n\n**Device ID:** {device_id}\n\nYou can change the IP address (if the device moved to a new IP) or update the credentials. All your historical data will be preserved.",
+        "data": {
+          "host": "Host",
+          "username": "Username",
+          "password": "Password"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Reauthenticate EnergyMe Device",
+        "description": "The credentials for your EnergyMe device at **{host}** are no longer valid. Please enter the new credentials to continue monitoring.\n\nYour historical data will be preserved.",
+        "data": {
+          "username": "Username",
+          "password": "Password"
+        }
+      }
     },
-    "options": {
-        "step": {
-            "init": {
-                "title": "EnergyMe Options",
-                "description": "Configure update frequency and which sensors to enable.",
-                "data": {
-                    "scan_interval": "Update interval (seconds)",
-                    "sensors": "Enabled sensors"
-                },
-                "data_description": {
-                    "sensors": "Select which sensor types to enable. At least one sensor must be selected."
-                }
-            }
-        }
+    "error": {
+      "cannot_connect": "Failed to connect to the EnergyMe device. Check the host and network.",
+      "cannot_connect_timeout": "Connection to the EnergyMe device timed out. Check if it's online and the host is correct.",
+      "cannot_connect_http": "Received an HTTP error from the EnergyMe device. Check logs for details.",
+      "invalid_auth": "Authentication failed. Check your username and password.",
+      "device_mismatch": "This device has a different ID than the one you're trying to reconfigure. Please ensure you're connecting to the correct device.",
+      "unknown": "An unknown error occurred."
+    },
+    "abort": {
+      "already_configured": "This EnergyMe device is already configured.",
+      "not_energyme_device": "The discovered device is not an EnergyMe device.",
+      "reconfigure_successful": "Device reconfigured successfully! The integration has been reloaded with the new connection details.",
+      "reauth_successful": "Authentication successful! The integration has been reloaded.",
+      "reconfigure_failed": "Failed to reconfigure the device. Please try again."
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "EnergyMe Options",
+        "description": "Configure update frequency and which sensors to enable.",
+        "data": {
+          "scan_interval": "Update interval (seconds)",
+          "sensors": "Enabled sensors"
+        },
+        "data_description": {
+          "sensors": "Select which sensor types to enable. At least one sensor must be selected."
+        }
+      }
+    }
+  }
 }
