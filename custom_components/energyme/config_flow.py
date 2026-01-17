@@ -11,16 +11,7 @@ from homeassistant.core import callback
 from homeassistant.const import CONF_NAME
 from homeassistant.helpers.service_info.zeroconf import ZeroconfServiceInfo
 
-from .const import (
-    DOMAIN,
-    CONF_HOST,
-    CONF_USERNAME,
-    CONF_PASSWORD,
-    CONF_SCAN_INTERVAL,
-    DEFAULT_SCAN_INTERVAL,
-    CONF_SENSORS,
-    DEFAULT_SENSORS
-)
+from .const import DOMAIN, CONF_HOST, CONF_USERNAME, CONF_PASSWORD, CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL, CONF_SENSORS, DEFAULT_SENSORS
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -107,12 +98,15 @@ class EnergyMeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             if error:
                 errors["base"] = error
             else:
-                # Verify this is the same device by checking device_id
+                # Only verify device ID if both the new connection returns one AND we have one stored
+                # This allows reconfiguration even if device_id is not available
                 new_device_id = system_info.get("static", {}).get("device", {}).get("id", "")
                 old_device_id = entry.unique_id
 
-                # If device has a device_id, verify it matches
-                if new_device_id and old_device_id and new_device_id != old_device_id:
+                # Skip device_id check if either is missing or if unique_id was the host (legacy setup)
+                should_verify_id = new_device_id and old_device_id and old_device_id != entry.data.get(CONF_HOST, "")
+
+                if should_verify_id and new_device_id != old_device_id:
                     errors["base"] = "device_mismatch"
                     _LOGGER.error(
                         "Device ID mismatch: expected %s, got %s",
@@ -120,6 +114,12 @@ class EnergyMeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         new_device_id
                     )
                 else:
+                    _LOGGER.info(
+                        "Reconfigure successful for device at %s (device_id: %s, verified: %s)",
+                        host,
+                        new_device_id or "not available",
+                        should_verify_id
+                    )
                     # Update the config entry with new connection details
                     self.hass.config_entries.async_update_entry(
                         entry,
@@ -185,13 +185,27 @@ class EnergyMeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             if error:
                 errors["base"] = error
             else:
-                # Verify this is the same device
+                # Only verify device ID if both the new connection returns one AND we have one stored
                 new_device_id = system_info.get("static", {}).get("device", {}).get("id", "")
                 old_device_id = self._reauth_entry.unique_id
 
-                if new_device_id and old_device_id and new_device_id != old_device_id:
+                # Skip device_id check if either is missing (could be legacy setup or device doesn't provide it)
+                should_verify_id = new_device_id and old_device_id and old_device_id != host
+
+                if should_verify_id and new_device_id != old_device_id:
                     errors["base"] = "device_mismatch"
+                    _LOGGER.error(
+                        "Device ID mismatch during reauth: expected %s, got %s",
+                        old_device_id,
+                        new_device_id
+                    )
                 else:
+                    _LOGGER.info(
+                        "Reauth successful for device at %s (device_id: %s, verified: %s)",
+                        host,
+                        new_device_id or "not available",
+                        should_verify_id
+                    )
                     # Update credentials
                     self.hass.config_entries.async_update_entry(
                         self._reauth_entry,
