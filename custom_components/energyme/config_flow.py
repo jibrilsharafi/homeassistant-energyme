@@ -12,13 +12,13 @@ from homeassistant.const import CONF_NAME
 from homeassistant.helpers.service_info.zeroconf import ZeroconfServiceInfo
 
 from .const import (
-    DOMAIN, 
-    CONF_HOST, 
-    CONF_USERNAME, 
-    CONF_PASSWORD, 
-    CONF_SCAN_INTERVAL, 
-    DEFAULT_SCAN_INTERVAL, 
-    CONF_SENSORS, 
+    DOMAIN,
+    CONF_HOST,
+    CONF_USERNAME,
+    CONF_PASSWORD,
+    CONF_SCAN_INTERVAL,
+    DEFAULT_SCAN_INTERVAL,
+    CONF_SENSORS,
     DEFAULT_SENSORS
 )
 
@@ -54,6 +54,7 @@ class EnergyMeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         Returns:
             Tuple of (system_info dict, None) on success, or (None, error_key) on failure.
+
         """
         try:
             info_url = f"http://{host}/api/v1/system/info"
@@ -129,10 +130,10 @@ class EnergyMeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                             CONF_PASSWORD: password,
                         }
                     )
-                    
+
                     # Reload the entry to apply changes
                     await self.hass.config_entries.async_reload(entry.entry_id)
-                    
+
                     return self.async_abort(reason="reconfigure_successful")
 
         # Pre-fill with current values
@@ -174,7 +175,7 @@ class EnergyMeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             username = user_input[CONF_USERNAME]
             password = user_input[CONF_PASSWORD]
-            
+
             # Use the existing host from the config entry
             host = self._reauth_entry.data[CONF_HOST]
 
@@ -200,12 +201,12 @@ class EnergyMeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                             CONF_PASSWORD: password,
                         }
                     )
-                    
+
                     await self.hass.config_entries.async_reload(self._reauth_entry.entry_id)
                     return self.async_abort(reason="reauth_successful")
 
         current_username = self._reauth_entry.data.get(CONF_USERNAME, "")
-        
+
         reauth_schema = vol.Schema(
             {
                 vol.Required(CONF_USERNAME, default=current_username): str,
