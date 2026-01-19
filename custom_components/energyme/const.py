@@ -19,6 +19,7 @@ SYSTEM_SENSORS = [
     "device_id",
     "temperature",
     "wifi_rssi",
+    "wifi_local_ip",
     "heap_free_percentage",
     "uptime",
     "storage_free",

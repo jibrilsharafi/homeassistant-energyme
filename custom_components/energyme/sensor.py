@@ -167,6 +167,15 @@ SYSTEM_SENSOR_DESCRIPTIONS: dict[str, SensorEntityDescription] = {
         icon="mdi:wifi-strength-2",
         entity_category=EntityCategory.DIAGNOSTIC,
     ),
+    "wifi_local_ip": SensorEntityDescription(
+        key="wifi_local_ip",
+        name="WiFi Local IP Address",
+        native_unit_of_measurement=None,
+        device_class=None,
+        state_class=None,
+        icon="mdi:ip",
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
     "heap_free_percentage": SensorEntityDescription(
         key="heap_free_percentage",
         name="Heap Memory Free",
@@ -590,6 +599,8 @@ class EnergyMeSystemSensor(CoordinatorEntity, SensorEntity):  # type: ignore[mis
                     value = temp_value
         elif self._api_key == "wifi_rssi":
             value = device_info.get("dynamic", {}).get("network", {}).get("wifiRssi")
+        elif self._api_key == "wifi_local_ip":
+            value = device_info.get("dynamic", {}).get("network", {}).get("wifiLocalIp")
         elif self._api_key == "heap_free_percentage":
             heap_info = device_info.get("dynamic", {}).get("memory", {}).get("heap", {})
             free_percentage = heap_info.get("freePercentage")
