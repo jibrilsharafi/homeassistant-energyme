@@ -35,7 +35,7 @@ if ($lintPassed) {
 
 # Run hassfest validation
 Write-Host "`nRunning hassfest validation..." -ForegroundColor Green
-Set-Location ..
+Push-Location ..
 docker run --rm -v "${PWD}/custom_components:/github/workspace/custom_components" ghcr.io/home-assistant/hassfest
 
 if ($LASTEXITCODE -eq 0) {
@@ -44,6 +44,7 @@ if ($LASTEXITCODE -eq 0) {
     Write-Host "❌ Hassfest validation FAILED" -ForegroundColor Red
     $hassfestPassed = $false
 }
+Pop-Location
 
 Write-Host "`nHACS validation requires GitHub token and is best tested via GitHub Actions." -ForegroundColor Yellow
 Write-Host "You can check the HACS validation results in your GitHub Actions logs." -ForegroundColor Yellow

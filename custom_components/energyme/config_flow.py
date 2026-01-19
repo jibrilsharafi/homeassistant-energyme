@@ -8,10 +8,10 @@ import voluptuous as vol
 
 from homeassistant import config_entries
 from homeassistant.core import callback
-from homeassistant.const import CONF_NAME  # If you want to allow naming the device
+from homeassistant.const import CONF_NAME
 from homeassistant.helpers.service_info.zeroconf import ZeroconfServiceInfo
 
-from .const import DOMAIN, CONF_HOST, CONF_USERNAME, CONF_PASSWORD, CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL, CONF_SENSORS, DEFAULT_SENSORS  # Added auth constants
+from .const import DOMAIN, CONF_HOST, CONF_USERNAME, CONF_PASSWORD, CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -20,7 +20,6 @@ DATA_SCHEMA = vol.Schema(
         vol.Required(CONF_HOST): str,
         vol.Required(CONF_USERNAME): str,
         vol.Required(CONF_PASSWORD): str,
-        # vol.Optional(CONF_NAME, default="EnergyMe"): str, # Optional: allow user to name it
     }
 )
 
@@ -37,6 +36,7 @@ class EnergyMeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._discovered_device_id: str | None = None
         self._discovered_model: str | None = None
         self._discovered_version: str | None = None
+        self._reauth_entry: config_entries.ConfigEntry | None = None
 
     async def _test_connection(
         self, host: str, username: str, password: str
@@ -73,9 +73,169 @@ class EnergyMeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             if err.response.status_code == 401:
                 return None, "invalid_auth"
             return None, "cannot_connect_http"
-        except Exception as e:  # pylint: disable=broad-except
+        except Exception as e:
             _LOGGER.exception("Unexpected exception: %s", e)
             return None, "unknown"
+
+    async def async_step_reconfigure(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """Handle reconfiguration of the integration."""
+        entry = self.hass.config_entries.async_get_entry(self.context["entry_id"])
+        if not entry:
+            return self.async_abort(reason="reconfigure_failed")
+
+        errors = {}
+
+        if user_input is not None:
+            host = user_input[CONF_HOST]
+            username = user_input[CONF_USERNAME]
+            password = user_input[CONF_PASSWORD]
+
+            # Test connection with new credentials
+            system_info, error = await self._test_connection(host, username, password)
+
+            if error:
+                errors["base"] = error
+            else:
+                # Only verify device ID if both the new connection returns one AND we have one stored
+                # This allows reconfiguration even if device_id is not available
+                new_device_id = system_info.get("static", {}).get("device", {}).get("id", "")
+                old_device_id = entry.unique_id
+
+                # Skip device_id check if either is missing or if unique_id was the host (legacy setup)
+                should_verify_id = new_device_id and old_device_id and old_device_id != entry.data.get(CONF_HOST, "")
+
+                if should_verify_id and new_device_id != old_device_id:
+                    errors["base"] = "device_mismatch"
+                    _LOGGER.error(
+                        "Device ID mismatch: expected %s, got %s",
+                        old_device_id,
+                        new_device_id
+                    )
+                else:
+                    _LOGGER.info(
+                        "Reconfigure successful for device at %s (device_id: %s, verified: %s)",
+                        host,
+                        new_device_id or "not available",
+                        should_verify_id
+                    )
+                    # Update the config entry with new connection details
+                    self.hass.config_entries.async_update_entry(
+                        entry,
+                        data={
+                            **entry.data,
+                            CONF_HOST: host,
+                            CONF_USERNAME: username,
+                            CONF_PASSWORD: password,
+                        }
+                    )
+
+                    # Reload the entry to apply changes
+                    await self.hass.config_entries.async_reload(entry.entry_id)
+
+                    return self.async_abort(reason="reconfigure_successful")
+
+        # Pre-fill with current values
+        current_host = entry.data.get(CONF_HOST, "")
+        current_username = entry.data.get(CONF_USERNAME, "")
+
+        reconfigure_schema = vol.Schema(
+            {
+                vol.Required(CONF_HOST, default=current_host): str,
+                vol.Required(CONF_USERNAME, default=current_username): str,
+                vol.Required(CONF_PASSWORD): str,
+            }
+        )
+
+        return self.async_show_form(
+            step_id="reconfigure",
+            data_schema=reconfigure_schema,
+            errors=errors,
+            description_placeholders={
+                "device_id": entry.unique_id or "unknown",
+            }
+        )
+
+    async def async_step_reauth(
+        self, entry_data: dict[str, Any]
+    ) -> config_entries.ConfigFlowResult:
+        """Handle reauthorization request."""
+        self._reauth_entry = self.hass.config_entries.async_get_entry(
+            self.context["entry_id"]
+        )
+        return await self.async_step_reauth_confirm()
+
+    async def async_step_reauth_confirm(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """Handle reauthorization confirmation."""
+        errors = {}
+
+        if user_input is not None:
+            username = user_input[CONF_USERNAME]
+            password = user_input[CONF_PASSWORD]
+
+            # Use the existing host from the config entry
+            host = self._reauth_entry.data[CONF_HOST]
+
+            # Test connection with new credentials
+            system_info, error = await self._test_connection(host, username, password)
+
+            if error:
+                errors["base"] = error
+            else:
+                # Only verify device ID if both the new connection returns one AND we have one stored
+                new_device_id = system_info.get("static", {}).get("device", {}).get("id", "")
+                old_device_id = self._reauth_entry.unique_id
+
+                # Skip device_id check if either is missing (could be legacy setup or device doesn't provide it)
+                should_verify_id = new_device_id and old_device_id and old_device_id != host
+
+                if should_verify_id and new_device_id != old_device_id:
+                    errors["base"] = "device_mismatch"
+                    _LOGGER.error(
+                        "Device ID mismatch during reauth: expected %s, got %s",
+                        old_device_id,
+                        new_device_id
+                    )
+                else:
+                    _LOGGER.info(
+                        "Reauth successful for device at %s (device_id: %s, verified: %s)",
+                        host,
+                        new_device_id or "not available",
+                        should_verify_id
+                    )
+                    # Update credentials
+                    self.hass.config_entries.async_update_entry(
+                        self._reauth_entry,
+                        data={
+                            **self._reauth_entry.data,
+                            CONF_USERNAME: username,
+                            CONF_PASSWORD: password,
+                        }
+                    )
+
+                    await self.hass.config_entries.async_reload(self._reauth_entry.entry_id)
+                    return self.async_abort(reason="reauth_successful")
+
+        current_username = self._reauth_entry.data.get(CONF_USERNAME, "")
+
+        reauth_schema = vol.Schema(
+            {
+                vol.Required(CONF_USERNAME, default=current_username): str,
+                vol.Required(CONF_PASSWORD): str,
+            }
+        )
+
+        return self.async_show_form(
+            step_id="reauth_confirm",
+            data_schema=reauth_schema,
+            errors=errors,
+            description_placeholders={
+                "host": self._reauth_entry.data.get(CONF_HOST, ""),
+            }
+        )
 
     async def async_step_zeroconf(
         self, discovery_info: ZeroconfServiceInfo
@@ -103,8 +263,7 @@ class EnergyMeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._discovered_model = model
         self._discovered_version = version
 
-        # Check if already configured by device_id (new method) or host (legacy)
-        # This ensures backward compatibility with existing installations
+        # Check if already configured by device_id
         if device_id:
             await self.async_set_unique_id(device_id)
             self._abort_if_unique_id_configured(updates={CONF_HOST: host})
@@ -112,7 +271,6 @@ class EnergyMeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         # Also check for legacy entries that used host as unique_id
         for entry in self._async_current_entries():
             if entry.data.get(CONF_HOST) == host:
-                # Found existing entry by host - update its unique_id if needed
                 return self.async_abort(reason="already_configured")
 
         # If no device_id available, fall back to host
@@ -221,41 +379,12 @@ class EnergyMeOptionsFlowHandler(config_entries.OptionsFlow):
 
     async def async_step_init(self, user_input=None):
         """Manage the options."""
-        # Available sensor options with friendly names (defined once)
-        sensor_options = {
-            "voltage": "Voltage",
-            "current": "Current",
-            "activePower": "Real Power",
-            "reactivePower": "Reactive Power",
-            "apparentPower": "Apparent Power",
-            "powerFactor": "Power Factor",
-            "activeEnergyImported": "Active Energy Imported",
-            "activeEnergyExported": "Active Energy Exported",
-            "reactiveEnergyImported": "Reactive Energy Imported",
-            "reactiveEnergyExported": "Reactive Energy Exported",
-            "apparentEnergy": "Apparent Energy",
-        }
-
         if user_input is not None:
-            # Convert boolean sensor selections back to list format
-            selected_sensors = []
             scan_interval = user_input.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
 
-            # Create reverse mapping from display name to sensor key
-            display_name_to_key = {display_name: sensor_key for sensor_key, display_name in sensor_options.items()}
-
-            for field_name, value in user_input.items():
-                if value and field_name in display_name_to_key:
-                    selected_sensors.append(display_name_to_key[field_name])
-
-            # Ensure at least one sensor is selected
-            if not selected_sensors:
-                selected_sensors = DEFAULT_SENSORS
-
-            # Create the final options data
+            # Create the final options data with only scan interval
             options_data = {
                 CONF_SCAN_INTERVAL: scan_interval,
-                CONF_SENSORS: selected_sensors,
             }
 
             return self.async_create_entry(title="", data=options_data)
@@ -263,30 +392,18 @@ class EnergyMeOptionsFlowHandler(config_entries.OptionsFlow):
         current_scan_interval = self.config_entry.options.get(
             CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
         )
-        current_sensors = self.config_entry.options.get(
-            CONF_SENSORS, DEFAULT_SENSORS
-        )
-
-        # Create individual boolean options for each sensor with nice display names
-        sensor_schema = {}
-        for sensor_key, sensor_name in sensor_options.items():
-            sensor_schema[vol.Optional(
-                sensor_name,  # Use the friendly name as the field key
-                default=sensor_key in current_sensors
-            )] = bool
 
         options_schema = vol.Schema({
             vol.Optional(
                 CONF_SCAN_INTERVAL,
                 default=current_scan_interval,
             ): vol.All(vol.Coerce(int), vol.Range(min=1)),
-            **sensor_schema,
         })
 
         return self.async_show_form(
             step_id="init",
             data_schema=options_schema,
             description_placeholders={
-                "sensor_help": "Select which sensors to enable. At least one sensor must be selected."
+                "scan_interval_help": "Set the polling interval in seconds for meter data (voltage, power, energy, etc.)."
             }
         )

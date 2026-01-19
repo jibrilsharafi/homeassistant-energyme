@@ -5,10 +5,12 @@ from datetime import timedelta
 
 import requests
 from requests.auth import HTTPDigestAuth
+from http import HTTPStatus
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.exceptions import ConfigEntryAuthFailed
 
 from .const import (
     DOMAIN,
@@ -25,6 +27,7 @@ _LOGGER = logging.getLogger(__name__)
 # Define the platforms that this integration will support
 PLATFORMS = ["sensor"]
 
+TIMEOUT_REQUESTS = 10
 
 async def async_update_options_listener(hass: HomeAssistant, entry: ConfigEntry):
     """Handle options update."""
@@ -36,11 +39,11 @@ async def async_update_options_listener(hass: HomeAssistant, entry: ConfigEntry)
         entry.title,
         new_scan_interval,
     )
-    # Only update the meter coordinator interval (system coordinator stays at 60 seconds)
+    # Only update the meter coordinator interval (system coordinator stays at fixed interval)
     meter_coordinator.update_interval = timedelta(seconds=new_scan_interval)
 
-    # Reload the entry to update sensor selection
-    await hass.config_entries.async_reload(entry.entry_id)
+    # Request a refresh with the new interval
+    await meter_coordinator.async_request_refresh()
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -66,7 +69,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 return requests.get(
                     channel_config_url,
                     auth=auth,
-                    timeout=5,
+                    timeout=TIMEOUT_REQUESTS,
                     headers={"accept": "application/json"}
                 )
 
@@ -81,7 +84,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 return requests.get(
                     meter_data_url,
                     auth=auth,
-                    timeout=5,
+                    timeout=TIMEOUT_REQUESTS,
                     headers={"accept": "application/json"}
                 )
 
@@ -91,15 +94,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
             return {"channels": channel_config, "meter": meter_data}
 
+        except requests.exceptions.HTTPError as err:
+            if err.response.status_code == HTTPStatus.UNAUTHORIZED.value:
+                _LOGGER.error("Authentication failed for EnergyMe device at %s", host)
+                raise ConfigEntryAuthFailed(
+                    f"Authentication failed for EnergyMe device at {host}"
+                ) from err
+            _LOGGER.error("HTTP error from EnergyMe device: %s", err)
+            raise UpdateFailed(f"HTTP error from EnergyMe device: {err}") from err
         except requests.exceptions.Timeout:
             _LOGGER.error("Timeout connecting to EnergyMe device at %s", host)
             raise UpdateFailed(f"Timeout connecting to EnergyMe device at {host}")
         except requests.exceptions.ConnectionError:
             _LOGGER.error("Error connecting to EnergyMe device at %s", host)
             raise UpdateFailed(f"Error connecting to EnergyMe device at {host}")
-        except requests.exceptions.HTTPError as err:
-            _LOGGER.error("HTTP error from EnergyMe device: %s", err)
-            raise UpdateFailed(f"HTTP error from EnergyMe device: {err}")
         except Exception as err:
             _LOGGER.exception("Unexpected error fetching EnergyMe meter data")
             raise UpdateFailed(f"Unexpected error: {err}")
@@ -114,7 +122,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 return requests.get(
                     device_info_url,
                     auth=auth,
-                    timeout=5,
+                    timeout=TIMEOUT_REQUESTS,
                     headers={"accept": "application/json"}
                 )
 
@@ -131,7 +139,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     return requests.get(
                         update_info_url,
                         auth=auth,
-                        timeout=5,
+                        timeout=TIMEOUT_REQUESTS,
                         headers={"accept": "application/json"}
                     )
 
@@ -149,15 +157,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             # Combine the data
             return {"device_info": device_info, "update_info": update_info}
 
+        except requests.exceptions.HTTPError as err:
+            if err.response.status_code == HTTPStatus.UNAUTHORIZED.value:
+                _LOGGER.error("Authentication failed for EnergyMe device at %s for system data", host)
+                raise ConfigEntryAuthFailed(
+                    f"Authentication failed for EnergyMe device at {host}"
+                ) from err
+            _LOGGER.error("HTTP error from EnergyMe device for system data: %s", err)
+            raise UpdateFailed(f"HTTP error from EnergyMe device: {err}") from err
         except requests.exceptions.Timeout:
             _LOGGER.error("Timeout connecting to EnergyMe device at %s for system data", host)
             raise UpdateFailed(f"Timeout connecting to EnergyMe device at {host}")
         except requests.exceptions.ConnectionError:
             _LOGGER.error("Error connecting to EnergyMe device at %s for system data", host)
             raise UpdateFailed(f"Error connecting to EnergyMe device at {host}")
-        except requests.exceptions.HTTPError as err:
-            _LOGGER.error("HTTP error from EnergyMe device for system data: %s", err)
-            raise UpdateFailed(f"HTTP error from EnergyMe device: {err}")
         except Exception as err:
             _LOGGER.exception("Unexpected error fetching EnergyMe system data")
             raise UpdateFailed(f"Unexpected error: {err}")
@@ -171,13 +184,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         update_interval=timedelta(seconds=scan_interval),
     )
 
-    # Create system data coordinator (fixed 60 second interval)
+    # Create system data coordinator (fixed interval)
     system_coordinator = DataUpdateCoordinator(
         hass,
         _LOGGER,
         name=f"{DOMAIN}_system_coordinator_{host}",
         update_method=async_update_system_data,
-        update_interval=timedelta(seconds=SYSTEM_SCAN_INTERVAL),  # Fixed 1 minute interval
+        update_interval=timedelta(seconds=SYSTEM_SCAN_INTERVAL),  # Fixed interval
     )
 
     # Fetch initial data so we have it when entities are set up.
