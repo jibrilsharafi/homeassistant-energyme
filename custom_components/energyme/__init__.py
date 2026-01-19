@@ -42,8 +42,8 @@ async def async_update_options_listener(hass: HomeAssistant, entry: ConfigEntry)
     # Only update the meter coordinator interval (system coordinator stays at fixed interval)
     meter_coordinator.update_interval = timedelta(seconds=new_scan_interval)
 
-    # Reload the entry to update sensor selection
-    await hass.config_entries.async_reload(entry.entry_id)
+    # Request a refresh with the new interval
+    await meter_coordinator.async_request_refresh()
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

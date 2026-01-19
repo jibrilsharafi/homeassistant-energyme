@@ -11,7 +11,7 @@ from homeassistant.core import callback
 from homeassistant.const import CONF_NAME
 from homeassistant.helpers.service_info.zeroconf import ZeroconfServiceInfo
 
-from .const import DOMAIN, CONF_HOST, CONF_USERNAME, CONF_PASSWORD, CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL, CONF_SENSORS, DEFAULT_SENSORS
+from .const import DOMAIN, CONF_HOST, CONF_USERNAME, CONF_PASSWORD, CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -379,41 +379,12 @@ class EnergyMeOptionsFlowHandler(config_entries.OptionsFlow):
 
     async def async_step_init(self, user_input=None):
         """Manage the options."""
-        # Available sensor options with friendly names (defined once)
-        sensor_options = {
-            "voltage": "Voltage",
-            "current": "Current",
-            "activePower": "Real Power",
-            "reactivePower": "Reactive Power",
-            "apparentPower": "Apparent Power",
-            "powerFactor": "Power Factor",
-            "activeEnergyImported": "Active Energy Imported",
-            "activeEnergyExported": "Active Energy Exported",
-            "reactiveEnergyImported": "Reactive Energy Imported",
-            "reactiveEnergyExported": "Reactive Energy Exported",
-            "apparentEnergy": "Apparent Energy",
-        }
-
         if user_input is not None:
-            # Convert boolean sensor selections back to list format
-            selected_sensors = []
             scan_interval = user_input.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
 
-            # Create reverse mapping from display name to sensor key
-            display_name_to_key = {display_name: sensor_key for sensor_key, display_name in sensor_options.items()}
-
-            for field_name, value in user_input.items():
-                if value and field_name in display_name_to_key:
-                    selected_sensors.append(display_name_to_key[field_name])
-
-            # Ensure at least one sensor is selected
-            if not selected_sensors:
-                selected_sensors = DEFAULT_SENSORS
-
-            # Create the final options data
+            # Create the final options data with only scan interval
             options_data = {
                 CONF_SCAN_INTERVAL: scan_interval,
-                CONF_SENSORS: selected_sensors,
             }
 
             return self.async_create_entry(title="", data=options_data)
@@ -421,30 +392,18 @@ class EnergyMeOptionsFlowHandler(config_entries.OptionsFlow):
         current_scan_interval = self.config_entry.options.get(
             CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
         )
-        current_sensors = self.config_entry.options.get(
-            CONF_SENSORS, DEFAULT_SENSORS
-        )
-
-        # Create individual boolean options for each sensor with nice display names
-        sensor_schema = {}
-        for sensor_key, sensor_name in sensor_options.items():
-            sensor_schema[vol.Optional(
-                sensor_name,
-                default=sensor_key in current_sensors
-            )] = bool
 
         options_schema = vol.Schema({
             vol.Optional(
                 CONF_SCAN_INTERVAL,
                 default=current_scan_interval,
             ): vol.All(vol.Coerce(int), vol.Range(min=1)),
-            **sensor_schema,
         })
 
         return self.async_show_form(
             step_id="init",
             data_schema=options_schema,
             description_placeholders={
-                "sensor_help": "Select which sensors to enable. At least one sensor must be selected."
+                "scan_interval_help": "Set the polling interval in seconds for meter data (voltage, power, energy, etc.)."
             }
         )

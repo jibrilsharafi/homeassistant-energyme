@@ -12,17 +12,8 @@ DEFAULT_SCAN_INTERVAL = 10 # Seconds - for meter data
 CONF_SCAN_INTERVAL = "scan_interval" # Added for options flow
 SYSTEM_SCAN_INTERVAL = 900 # Seconds (15 minutes) - fixed interval for system sensors (not critical data)
 
-# Sensor selection configuration
-CONF_SENSORS = "sensors"
-DEFAULT_SENSORS = [
-    "voltage",
-    "activePower",
-    "powerFactor",
-    "activeEnergyImported"
-]
-
 # System sensors are always created regardless of sensor selection
-# These update every 60 seconds on a separate coordinator
+# These update on a fixed interval on a separate coordinator
 SYSTEM_SENSORS = [
     "firmware_version",
     "device_id",
