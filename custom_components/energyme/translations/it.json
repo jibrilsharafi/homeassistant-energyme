@@ -3,7 +3,7 @@
         "step": {
             "user": {
                 "title": "Connetti a EnergyMe",
-                "description": "Inserisci l'indirizzo hostname/IP e le credenziali per il tuo dispositivo EnergyMe. Se hai bisogno di aiuto con la configurazione dai un'occhiata qui: https://github.com/jibrilsharafi/EnergyMe-Home",
+                "description": "Inserisci l'indirizzo hostname/IP e le credenziali per il tuo dispositivo EnergyMe.",
                 "data": {
                     "host": "Host",
                     "username": "Nome utente",
