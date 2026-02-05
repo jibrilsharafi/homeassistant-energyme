@@ -10,6 +10,7 @@ dependencies = []
 dev = [
     "flask>=3.0.0",
     "colorlog>=6.10.1",
+    "homeassistant>=2023.8.0",
 ]
 
 test = [
