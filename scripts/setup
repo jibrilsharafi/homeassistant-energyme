@@ -1,8 +1,0 @@
-#!/usr/bin/env bash
-
-set -e
-
-cd "$(dirname "$0")/.."
-
-[ -f dev/requirements.txt ] || { echo 'Error: dev/requirements.txt not found'; exit 1; }
-python3 -m pip install --requirement dev/requirements.txt

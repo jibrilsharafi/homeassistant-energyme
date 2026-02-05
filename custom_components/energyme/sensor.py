@@ -371,11 +371,11 @@ class EnergyMeSensor(CoordinatorEntity, SensorEntity):  # type: ignore[misc]
         self._api_key = api_key
         self._base_sensor_name = entity_description.name
 
-        # Construct a stable unique ID
+        # Construct a stable unique ID (can contain uppercase)
         self._attr_unique_id = f"{DOMAIN}_{entry_id}_ch{channel_index}_{api_key}"
 
-        # Set entity_id explicitly based on unique_id for maximum stability
-        self.entity_id = f"sensor.{DOMAIN}_{entry_id}_ch{channel_index}_{api_key.lower()}"
+        # Set entity_id explicitly - must be lowercase for HA 2026.2+
+        self.entity_id = f"sensor.{DOMAIN}_{entry_id.lower()}_ch{channel_index}_{api_key.lower()}"
 
         # Set initial friendly name with channel label
         self._attr_name = f"{channel_label} - {self._base_sensor_name}"
@@ -542,8 +542,10 @@ class EnergyMeSystemSensor(CoordinatorEntity, SensorEntity):  # type: ignore[mis
         self._api_key = api_key
         self._main_device_id = main_device_id
 
+        # Unique ID can contain uppercase characters
         self._attr_unique_id = f"{DOMAIN}_{entry_id}_system_{api_key}"
-        self.entity_id = f"sensor.{DOMAIN}_{entry_id}_system_{api_key.lower()}"
+        # Entity ID must be lowercase for HA 2026.2+
+        self.entity_id = f"sensor.{DOMAIN}_{entry_id.lower()}_system_{api_key.lower()}"
 
         self.entity_description = entity_description
 

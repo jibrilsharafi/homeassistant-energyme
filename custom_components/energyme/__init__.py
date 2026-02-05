@@ -1,6 +1,7 @@
 """The EnergyMe integration."""
 
 import logging
+import re
 from datetime import timedelta
 
 import requests
@@ -9,6 +10,7 @@ from http import HTTPStatus
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.exceptions import ConfigEntryAuthFailed
 
@@ -29,6 +31,58 @@ PLATFORMS = ["sensor"]
 
 TIMEOUT_REQUESTS = 10
 
+async def async_migrate_entity_ids(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Migrate entity IDs to lowercase format for HA 2026.2+ compatibility.
+
+    HA 2026.2 introduced stricter entity ID validation that requires all entity IDs
+    to be lowercase. This migration updates existing entity IDs that contain uppercase
+    characters (from the ULID-based entry_id) to their lowercase equivalents.
+    """
+    entity_registry = er.async_get(hass)
+
+    # Pattern to match our entity IDs with potentially uppercase entry_id
+    # Format: energyme_{entry_id}_ch{N}_{sensor} or energyme_{entry_id}_system_{sensor}
+    pattern = re.compile(
+        rf"^sensor\.{DOMAIN}_([A-Za-z0-9]+)_(ch\d+|system)_(.+)$"
+    )
+
+    entities_to_update = []
+
+    for entity_entry in entity_registry.entities.values():
+        if entity_entry.platform != DOMAIN:
+            continue
+
+        match = pattern.match(entity_entry.entity_id)
+        if not match:
+            continue
+
+        current_entity_id = entity_entry.entity_id
+        lowercase_entity_id = current_entity_id.lower()
+
+        # Only migrate if there are uppercase characters
+        if current_entity_id != lowercase_entity_id:
+            entities_to_update.append((entity_entry, lowercase_entity_id))
+
+    for entity_entry, new_entity_id in entities_to_update:
+        _LOGGER.info(
+            "Migrating entity ID from %s to %s for HA 2026.2+ compatibility",
+            entity_entry.entity_id,
+            new_entity_id,
+        )
+        try:
+            entity_registry.async_update_entity(
+                entity_entry.entity_id,
+                new_entity_id=new_entity_id,
+            )
+        except ValueError as err:
+            _LOGGER.warning(
+                "Failed to migrate entity ID %s to %s: %s",
+                entity_entry.entity_id,
+                new_entity_id,
+                err,
+            )
+
+
 async def async_update_options_listener(hass: HomeAssistant, entry: ConfigEntry):
     """Handle options update."""
     coordinators = hass.data[DOMAIN][entry.entry_id]
@@ -48,6 +102,9 @@ async def async_update_options_listener(hass: HomeAssistant, entry: ConfigEntry)
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up EnergyMe from a config entry."""
+    # Migrate entity IDs to lowercase for HA 2026.2+ compatibility
+    await async_migrate_entity_ids(hass, entry)
+
     host = entry.data[CONF_HOST]
     username = entry.data[CONF_USERNAME]
     password = entry.data[CONF_PASSWORD]
