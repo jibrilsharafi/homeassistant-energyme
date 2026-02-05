@@ -20,3 +20,8 @@ config/*
 .mypy_cache
 .ruff_cache
 .vscode
+
+.venv
+
+# HA instance for development
+config

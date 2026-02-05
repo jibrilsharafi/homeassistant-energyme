@@ -1,8 +1,31 @@
-# The contents of this file is based on https://github.com/home-assistant/core/blob/dev/pyproject.toml
+[project]
+name = "homeassistant-energyme"
+version = "1.0.3"
+description = "EnergyMe integration for Home Assistant"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []
 
-target-version = "py310"
+[project.optional-dependencies]
+dev = [
+    "flask>=3.0.0",
+    "colorlog>=6.10.1",
+]
 
-[lint]
+test = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+]
+
+lint = [
+    "ruff>=0.15.0",
+]
+
+# The contents of this tool.ruff config is based on https://github.com/home-assistant/core/blob/dev/pyproject.toml
+[tool.ruff]
+target-version = "py311"
+
+[tool.ruff.lint]
 select = [
     "B007", # Loop control variable {name} not used within loop body
     "B014", # Exception handler with duplicate exception
@@ -39,11 +62,11 @@ ignore = [
     "E731",  # do not assign a lambda expression, use a def
 ]
 
-[lint.flake8-pytest-style]
+[tool.ruff.lint.flake8-pytest-style]
 fixture-parentheses = false
 
-[lint.pyupgrade]
+[tool.ruff.lint.pyupgrade]
 keep-runtime-typing = true
 
-[lint.mccabe]
+[tool.ruff.lint.mccabe]
 max-complexity = 25
