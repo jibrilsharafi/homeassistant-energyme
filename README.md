@@ -1,13 +1,15 @@
 # EnergyMe Home Assistant Integration
 
+[![HACS Default](https://img.shields.io/badge/HACS-Default-41BDF5.svg)](https://github.com/hacs/integration)
 [![GitHub Release][releases-shield]][releases]
-[![GitHub Activity][commits-shield]][commits]
 [![License][license-shield]](LICENSE)
-[![HACS Custom](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/custom-components/hacs)
 
 _A Home Assistant custom integration for EnergyMe energy monitoring devices._
 
 This integration allows you to monitor electrical energy consumption and production data from EnergyMe devices directly in Home Assistant. It provides real-time access to electrical measurements including voltage, current, power, energy consumption, and power factor across multiple monitored channels.
+
+Full setup animation:
+![Setup Animation](resources/setup_integration.gif)
 
 Example of integration:
 ![Integration](resources/integration_homepage.png)
@@ -20,9 +22,6 @@ Example of minimal sensor data:
 
 System data sensors:
 ![System Sensors](resources/integration_system.png)
-
-Full setup animation:
-![Setup Animation](resources/setup_integration.gif)
 
 ## Features
 
@@ -49,6 +48,13 @@ For each active channel configured on your EnergyMe device, the integration crea
 
 ## Installation
 
+### HACS Installation
+
+1. Search for "EnergyMe" in HACS and install it
+2. Restart Home Assistant
+3. Go to **Settings** → **Devices & Services** → **Add Integration**
+4. Search for "EnergyMe" and follow the setup wizard
+
 ### Manual Installation
 
 1. Download the latest release from the [releases page][releases]
@@ -57,15 +63,6 @@ For each active channel configured on your EnergyMe device, the integration crea
 4. Restart Home Assistant
 5. Go to **Settings** → **Devices & Services** → **Add Integration**
 6. Search for "EnergyMe" and follow the setup wizard
-
-### HACS Installation
-
-1. Add this repository as a custom repository in HACS:
-   - Go to HACS → Integrations → ⋮ → Custom repositories
-   - Add `https://github.com/jibrilsharafi/homeassistant-energyme` as an Integration
-2. Install the "EnergyMe" integration from HACS
-3. Restart Home Assistant
-4. Add the integration through **Settings** → **Devices & Services**
 
 ## Configuration
 
