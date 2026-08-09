@@ -4,7 +4,6 @@ import logging
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity, DataUpdateCoordinator
 
@@ -18,7 +17,7 @@ from .const import (
     MIN_LED_FIRMWARE_VERSION,
     MODEL,
 )
-from .led_api import EnergyMeLedClient
+from .led_api import EnergyMeLedClient, raise_if_unsupported
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -90,6 +89,18 @@ class EnergyMeLedOverrideSwitch(CoordinatorEntity, SwitchEntity):  # type: ignor
             return None
         return self.coordinator.data.get("layer") == "user"
 
+    @property
+    def extra_state_attributes(self) -> dict | None:
+        """Expose which layer is currently rendering.
+
+        Turning this on writes the user layer, but a network/alert/critical
+        condition still outranks it - "layer" shows what's actually winning
+        even when this switch itself reports off.
+        """
+        if not self.coordinator.data:
+            return None
+        return {"layer": self.coordinator.data.get("layer")}
+
     async def async_turn_on(self, **kwargs) -> None:
         """Re-assert the LED's current color onto the user layer."""
         self._raise_if_unsupported()
@@ -109,7 +120,6 @@ class EnergyMeLedOverrideSwitch(CoordinatorEntity, SwitchEntity):  # type: ignor
         await self.coordinator.async_request_refresh()
 
     def _raise_if_unsupported(self) -> None:
-        if not self.available:
-            raise HomeAssistantError(
-                f"LED control requires firmware >= {MIN_LED_FIRMWARE_VERSION} on {self._host}"
-            )
+        raise_if_unsupported(
+            self.available, self.coordinator.last_update_success, self._host, MIN_LED_FIRMWARE_VERSION
+        )

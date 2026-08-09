@@ -12,6 +12,22 @@ _LOGGER = logging.getLogger(__name__)
 TIMEOUT_REQUESTS = 10
 
 
+def raise_if_unsupported(
+    available: bool, last_update_success: bool, host: str, min_firmware: str
+) -> None:
+    """Raise a clear error before writing to the LED, if it's not currently controllable.
+
+    Distinguishes "firmware too old" from "device unreachable right now" -
+    both make the entity unavailable, but they're different problems and
+    deserve different error messages.
+    """
+    if available:
+        return
+    if not last_update_success:
+        raise HomeAssistantError(f"EnergyMe device at {host} is currently unreachable")
+    raise HomeAssistantError(f"LED control requires firmware >= {min_firmware} on {host}")
+
+
 class EnergyMeLedClient:
     """Wraps the device's /api/v1/led/* write endpoints.
 

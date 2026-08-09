@@ -11,7 +11,6 @@ from homeassistant.components.light import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import entity_platform
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -27,7 +26,7 @@ from .const import (
     MIN_LED_FIRMWARE_VERSION,
     MODEL,
 )
-from .led_api import EnergyMeLedClient
+from .led_api import EnergyMeLedClient, raise_if_unsupported
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -137,6 +136,22 @@ class EnergyMeLed(CoordinatorEntity, LightEntity):  # type: ignore[misc]
             return None
         return round(self.coordinator.data.get("brightness", 0) * 255 / 100)
 
+    @property
+    def extra_state_attributes(self) -> dict | None:
+        """Expose which layer is currently rendering.
+
+        A network/alert/critical condition outranks the user layer and
+        silently masks whatever color/pattern was last set here - without
+        this, that looks like the color "didn't take". "layer" being
+        anything other than "user" or "status" is why.
+        """
+        if not self.coordinator.data:
+            return None
+        return {
+            "layer": self.coordinator.data.get("layer"),
+            "pattern": self.coordinator.data.get("pattern"),
+        }
+
     async def async_turn_on(self, **kwargs) -> None:
         """Turn the LED on, optionally setting its color."""
         self._raise_if_unsupported()
@@ -183,7 +198,6 @@ class EnergyMeLed(CoordinatorEntity, LightEntity):  # type: ignore[misc]
         await self.coordinator.async_request_refresh()
 
     def _raise_if_unsupported(self) -> None:
-        if not self.available:
-            raise HomeAssistantError(
-                f"LED control requires firmware >= {MIN_LED_FIRMWARE_VERSION} on {self._host}"
-            )
+        raise_if_unsupported(
+            self.available, self.coordinator.last_update_success, self._host, MIN_LED_FIRMWARE_VERSION
+        )
