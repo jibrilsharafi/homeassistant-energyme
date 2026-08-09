@@ -22,6 +22,7 @@ from .const import (
     DEFAULT_SCAN_INTERVAL,
     CONF_SCAN_INTERVAL,
     SYSTEM_SCAN_INTERVAL,
+    MIN_LED_FIRMWARE_VERSION,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -30,6 +31,40 @@ _LOGGER = logging.getLogger(__name__)
 PLATFORMS = ["sensor", "light"]
 
 TIMEOUT_REQUESTS = 10
+
+
+def _version_at_least(version: str | None, minimum: str) -> bool:
+    """Compare dotted version strings numerically (e.g. "2.10.0" >= "2.3.0")."""
+    if not version:
+        return False
+    try:
+        version_parts = tuple(int(part) for part in version.split("."))
+        minimum_parts = tuple(int(part) for part in minimum.split("."))
+    except ValueError:
+        return False
+    return version_parts >= minimum_parts
+
+
+def _is_led_supported(system_coordinator: DataUpdateCoordinator, host: str) -> bool:
+    """Check the system coordinator's last-known firmware version for LED support."""
+    firmware_version = None
+    if system_coordinator.data:
+        firmware_version = (
+            system_coordinator.data.get("device_info", {})
+            .get("static", {})
+            .get("firmware", {})
+            .get("buildVersion")
+        )
+
+    supported = _version_at_least(firmware_version, MIN_LED_FIRMWARE_VERSION)
+    if not supported:
+        _LOGGER.debug(
+            "LED control requires firmware >= %s, device at %s reports %s - LED unavailable",
+            MIN_LED_FIRMWARE_VERSION,
+            host,
+            firmware_version,
+        )
+    return supported
 
 async def async_migrate_entity_ids(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Migrate entity IDs to lowercase format for HA 2026.2+ compatibility.
@@ -236,7 +271,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             raise UpdateFailed(f"Unexpected error: {err}")
 
     async def async_update_led_data():
-        """Fetch LED state from API endpoint."""
+        """Fetch LED state from API endpoint, if the firmware supports it.
+
+        Re-checked on every poll (not just at setup) against the system
+        coordinator's last-known firmware version, so LED control turns
+        itself on automatically after an OTA update crosses the minimum
+        version - no reload needed.
+        """
+        if not _is_led_supported(system_coordinator, host):
+            return None
+
         try:
             led_url = f"http://{host}/api/v1/led"
 

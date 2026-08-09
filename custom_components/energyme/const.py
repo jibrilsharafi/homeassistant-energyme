@@ -12,6 +12,10 @@ DEFAULT_SCAN_INTERVAL = 10 # Seconds - for meter data
 CONF_SCAN_INTERVAL = "scan_interval" # Added for options flow
 SYSTEM_SCAN_INTERVAL = 900 # Seconds (15 minutes) - fixed interval for system sensors (not critical data)
 
+# The /api/v1/led endpoints were added in firmware 2.3.0. Devices on older
+# firmware 404 on them, so LED control is gated on this version.
+MIN_LED_FIRMWARE_VERSION = "2.3.0"
+
 # System sensors are always created regardless of sensor selection
 # These update on a fixed interval on a separate coordinator
 SYSTEM_SENSORS = [

@@ -2,6 +2,7 @@
 import logging
 
 import requests
+import voluptuous as vol
 from requests.auth import HTTPDigestAuth
 
 from homeassistant.components.light import (
@@ -13,15 +14,30 @@ from homeassistant.components.light import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers import entity_platform
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity, DataUpdateCoordinator
 
-from .const import AUTHOR, COMPANY, CONF_HOST, CONF_PASSWORD, CONF_USERNAME, DOMAIN, MODEL
+from .const import (
+    AUTHOR,
+    COMPANY,
+    CONF_HOST,
+    CONF_PASSWORD,
+    CONF_USERNAME,
+    DOMAIN,
+    MIN_LED_FIRMWARE_VERSION,
+    MODEL,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
 TIMEOUT_REQUESTS = 10
 DEFAULT_RGB_COLOR = (255, 255, 255)
+
+SERVICE_LED_FLASH = "led_flash"
+ATTR_DURATION_MS = "duration_ms"
+MAX_FLASH_DURATION_MS = 60000
 
 
 async def async_setup_entry(
@@ -39,6 +55,20 @@ async def async_setup_entry(
 
     async_add_entities(
         [EnergyMeLed(led_coordinator, entry, base_device_id)]
+    )
+
+    platform = entity_platform.async_get_current_platform()
+    platform.async_register_entity_service(
+        SERVICE_LED_FLASH,
+        {
+            vol.Required(ATTR_RGB_COLOR): vol.All(
+                vol.ExactSequence((cv.byte, cv.byte, cv.byte)), vol.Coerce(tuple)
+            ),
+            vol.Required(ATTR_DURATION_MS): vol.All(
+                vol.Coerce(int), vol.Range(min=1, max=MAX_FLASH_DURATION_MS)
+            ),
+        },
+        "async_led_flash",
     )
 
 
@@ -103,6 +133,7 @@ class EnergyMeLed(CoordinatorEntity, LightEntity):  # type: ignore[misc]
 
     async def async_turn_on(self, **kwargs) -> None:
         """Turn the LED on, optionally setting its color."""
+        self._raise_if_unsupported()
         rgb_color = kwargs.get(ATTR_RGB_COLOR) or self.rgb_color or DEFAULT_RGB_COLOR
         await self._async_set_color(rgb_color, pattern="solid")
 
@@ -117,13 +148,37 @@ class EnergyMeLed(CoordinatorEntity, LightEntity):  # type: ignore[misc]
         Sends pattern "off" rather than releasing the layer, so the LED goes
         dark instead of reverting to the device's ambient status color.
         """
+        self._raise_if_unsupported()
         await self._async_set_color(self.rgb_color or DEFAULT_RGB_COLOR, pattern="off")
         await self.coordinator.async_request_refresh()
 
-    async def _async_set_color(self, rgb_color: tuple[int, int, int], pattern: str) -> None:
+    async def async_led_flash(self, rgb_color: tuple[int, int, int], duration_ms: int) -> None:
+        """Hold a color for a fixed duration, then release control automatically.
+
+        Unlike turn_on/turn_off, this releases the user layer once the
+        duration elapses instead of leaving the LED pinned to this color -
+        the device handles the timer itself, so it fires even if HA is
+        offline when it expires.
+        """
+        self._raise_if_unsupported()
+        await self._async_set_color(rgb_color, pattern="solid", duration_ms=duration_ms)
+        await self.coordinator.async_request_refresh()
+
+    def _raise_if_unsupported(self) -> None:
+        if not self.available:
+            raise HomeAssistantError(
+                f"LED control requires firmware >= {MIN_LED_FIRMWARE_VERSION} on {self._host}"
+            )
+
+    async def _async_set_color(
+        self, rgb_color: tuple[int, int, int], pattern: str, duration_ms: int | None = None
+    ) -> None:
         """Call the device's LED color endpoint."""
         red, green, blue = rgb_color
         url = f"http://{self._host}/api/v1/led/color"
+        payload = {"red": red, "green": green, "blue": blue, "pattern": pattern}
+        if duration_ms is not None:
+            payload["duration_ms"] = duration_ms
 
         def put_color():
             return requests.put(
@@ -131,7 +186,7 @@ class EnergyMeLed(CoordinatorEntity, LightEntity):  # type: ignore[misc]
                 auth=self._auth,
                 timeout=TIMEOUT_REQUESTS,
                 headers={"accept": "application/json"},
-                json={"red": red, "green": green, "blue": blue, "pattern": pattern},
+                json=payload,
             )
 
         await self._async_request(put_color, "set LED color")

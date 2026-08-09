@@ -1,0 +1,28 @@
+led_flash:
+  name: Flash LED color
+  description: >-
+    Hold the EnergyMe LED at a color for a fixed duration, then release
+    control back to the device automatically (unlike turning the light on,
+    which holds the color indefinitely). Requires firmware >= 2.3.0.
+  target:
+    entity:
+      domain: light
+      integration: energyme
+  fields:
+    rgb_color:
+      name: Color
+      description: RGB color to flash.
+      required: true
+      example: "[255, 0, 0]"
+      selector:
+        color_rgb:
+    duration_ms:
+      name: Duration
+      description: How long to hold the color, in milliseconds (max 60000).
+      required: true
+      example: 5000
+      selector:
+        number:
+          min: 1
+          max: 60000
+          unit_of_measurement: ms
