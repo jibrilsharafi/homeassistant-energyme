@@ -141,16 +141,13 @@ class EnergyMeLed(CoordinatorEntity, LightEntity):  # type: ignore[misc]
         """Expose which layer is currently rendering.
 
         A network/alert/critical condition outranks the user layer and
-        silently masks whatever color/pattern was last set here - without
-        this, that looks like the color "didn't take". "layer" being
-        anything other than "user" or "status" is why.
+        silently masks whatever color was last set here - without this,
+        that looks like the color "didn't take". "layer" being anything
+        other than "user" or "status" is why.
         """
         if not self.coordinator.data:
             return None
-        return {
-            "layer": self.coordinator.data.get("layer"),
-            "pattern": self.coordinator.data.get("pattern"),
-        }
+        return {"layer": self.coordinator.data.get("layer")}
 
     async def async_turn_on(self, **kwargs) -> None:
         """Turn the LED on, optionally setting its color."""
@@ -162,7 +159,7 @@ class EnergyMeLed(CoordinatorEntity, LightEntity):  # type: ignore[misc]
             device_brightness = round(kwargs[ATTR_BRIGHTNESS] * 100 / 255)
             await self._client.async_set_brightness(device_brightness)
 
-        await self.coordinator.async_request_refresh()
+        await self.coordinator.async_refresh()
 
     async def async_turn_off(self, **kwargs) -> None:
         """Turn the LED off.
@@ -172,7 +169,7 @@ class EnergyMeLed(CoordinatorEntity, LightEntity):  # type: ignore[misc]
         """
         self._raise_if_unsupported()
         await self._client.async_set_color(self.rgb_color or DEFAULT_RGB_COLOR, pattern="off")
-        await self.coordinator.async_request_refresh()
+        await self.coordinator.async_refresh()
 
     async def async_led_flash(self, rgb_color: tuple[int, int, int], duration_ms: int) -> None:
         """Hold a color for a fixed duration, then release control automatically.
@@ -184,7 +181,7 @@ class EnergyMeLed(CoordinatorEntity, LightEntity):  # type: ignore[misc]
         """
         self._raise_if_unsupported()
         await self._client.async_set_color(rgb_color, pattern="solid", duration_ms=duration_ms)
-        await self.coordinator.async_request_refresh()
+        await self.coordinator.async_refresh()
 
     async def async_led_release(self) -> None:
         """Release the user layer, handing control back to the device.
@@ -195,7 +192,7 @@ class EnergyMeLed(CoordinatorEntity, LightEntity):  # type: ignore[misc]
         """
         self._raise_if_unsupported()
         await self._client.async_release()
-        await self.coordinator.async_request_refresh()
+        await self.coordinator.async_refresh()
 
     def _raise_if_unsupported(self) -> None:
         raise_if_unsupported(

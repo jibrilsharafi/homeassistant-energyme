@@ -111,13 +111,13 @@ class EnergyMeLedOverrideSwitch(CoordinatorEntity, SwitchEntity):  # type: ignor
             color.get("blue", DEFAULT_RGB_COLOR[2]),
         )
         await self._client.async_set_color(rgb_color, pattern="solid")
-        await self.coordinator.async_request_refresh()
+        await self.coordinator.async_refresh()
 
     async def async_turn_off(self, **kwargs) -> None:
         """Release the user layer, handing control back to the device."""
         self._raise_if_unsupported()
         await self._client.async_release()
-        await self.coordinator.async_request_refresh()
+        await self.coordinator.async_refresh()
 
     def _raise_if_unsupported(self) -> None:
         raise_if_unsupported(
