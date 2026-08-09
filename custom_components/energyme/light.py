@@ -1,9 +1,7 @@
 """Platform for LED light control."""
 import logging
 
-import requests
 import voluptuous as vol
-from requests.auth import HTTPDigestAuth
 
 from homeassistant.components.light import (
     ATTR_BRIGHTNESS,
@@ -29,10 +27,10 @@ from .const import (
     MIN_LED_FIRMWARE_VERSION,
     MODEL,
 )
+from .led_api import EnergyMeLedClient
 
 _LOGGER = logging.getLogger(__name__)
 
-TIMEOUT_REQUESTS = 10
 DEFAULT_RGB_COLOR = (255, 255, 255)
 
 SERVICE_LED_FLASH = "led_flash"
@@ -96,7 +94,9 @@ class EnergyMeLed(CoordinatorEntity, LightEntity):  # type: ignore[misc]
         """Initialize the LED entity."""
         super().__init__(coordinator)
         self._host = entry.data[CONF_HOST]
-        self._auth = HTTPDigestAuth(entry.data[CONF_USERNAME], entry.data[CONF_PASSWORD])
+        self._client = EnergyMeLedClient(
+            coordinator.hass, self._host, entry.data[CONF_USERNAME], entry.data[CONF_PASSWORD]
+        )
 
         self._attr_unique_id = f"{DOMAIN}_{entry.entry_id}_led"
         self.entity_id = f"light.{DOMAIN}_{entry.entry_id.lower()}_led"
@@ -141,10 +141,11 @@ class EnergyMeLed(CoordinatorEntity, LightEntity):  # type: ignore[misc]
         """Turn the LED on, optionally setting its color."""
         self._raise_if_unsupported()
         rgb_color = kwargs.get(ATTR_RGB_COLOR) or self.rgb_color or DEFAULT_RGB_COLOR
-        await self._async_set_color(rgb_color, pattern="solid")
+        await self._client.async_set_color(rgb_color, pattern="solid")
 
         if ATTR_BRIGHTNESS in kwargs:
-            await self._async_set_brightness(kwargs[ATTR_BRIGHTNESS])
+            device_brightness = round(kwargs[ATTR_BRIGHTNESS] * 100 / 255)
+            await self._client.async_set_brightness(device_brightness)
 
         await self.coordinator.async_request_refresh()
 
@@ -155,7 +156,7 @@ class EnergyMeLed(CoordinatorEntity, LightEntity):  # type: ignore[misc]
         dark instead of reverting to the device's ambient status color.
         """
         self._raise_if_unsupported()
-        await self._async_set_color(self.rgb_color or DEFAULT_RGB_COLOR, pattern="off")
+        await self._client.async_set_color(self.rgb_color or DEFAULT_RGB_COLOR, pattern="off")
         await self.coordinator.async_request_refresh()
 
     async def async_led_flash(self, rgb_color: tuple[int, int, int], duration_ms: int) -> None:
@@ -167,7 +168,7 @@ class EnergyMeLed(CoordinatorEntity, LightEntity):  # type: ignore[misc]
         offline when it expires.
         """
         self._raise_if_unsupported()
-        await self._async_set_color(rgb_color, pattern="solid", duration_ms=duration_ms)
+        await self._client.async_set_color(rgb_color, pattern="solid", duration_ms=duration_ms)
         await self.coordinator.async_request_refresh()
 
     async def async_led_release(self) -> None:
@@ -178,17 +179,7 @@ class EnergyMeLed(CoordinatorEntity, LightEntity):  # type: ignore[misc]
         color, or a network/alert/critical indication if one is active.
         """
         self._raise_if_unsupported()
-        url = f"http://{self._host}/api/v1/led/color"
-
-        def delete_color():
-            return requests.delete(
-                url,
-                auth=self._auth,
-                timeout=TIMEOUT_REQUESTS,
-                headers={"accept": "application/json"},
-            )
-
-        await self._async_request(delete_color, "release LED color")
+        await self._client.async_release()
         await self.coordinator.async_request_refresh()
 
     def _raise_if_unsupported(self) -> None:
@@ -196,49 +187,3 @@ class EnergyMeLed(CoordinatorEntity, LightEntity):  # type: ignore[misc]
             raise HomeAssistantError(
                 f"LED control requires firmware >= {MIN_LED_FIRMWARE_VERSION} on {self._host}"
             )
-
-    async def _async_set_color(
-        self, rgb_color: tuple[int, int, int], pattern: str, duration_ms: int | None = None
-    ) -> None:
-        """Call the device's LED color endpoint."""
-        red, green, blue = rgb_color
-        url = f"http://{self._host}/api/v1/led/color"
-        payload = {"red": red, "green": green, "blue": blue, "pattern": pattern}
-        if duration_ms is not None:
-            payload["duration_ms"] = duration_ms
-
-        def put_color():
-            return requests.put(
-                url,
-                auth=self._auth,
-                timeout=TIMEOUT_REQUESTS,
-                headers={"accept": "application/json"},
-                json=payload,
-            )
-
-        await self._async_request(put_color, "set LED color")
-
-    async def _async_set_brightness(self, brightness: int) -> None:
-        """Call the device's LED brightness endpoint."""
-        url = f"http://{self._host}/api/v1/led/brightness"
-        device_brightness = round(brightness * 100 / 255)
-
-        def put_brightness():
-            return requests.put(
-                url,
-                auth=self._auth,
-                timeout=TIMEOUT_REQUESTS,
-                headers={"accept": "application/json"},
-                json={"brightness": device_brightness},
-            )
-
-        await self._async_request(put_brightness, "set LED brightness")
-
-    async def _async_request(self, func, action: str) -> None:
-        """Run a blocking request in the executor and raise on failure."""
-        try:
-            response = await self.hass.async_add_executor_job(func)
-            response.raise_for_status()
-        except requests.exceptions.RequestException as err:
-            _LOGGER.error("Failed to %s on EnergyMe device at %s: %s", action, self._host, err)
-            raise HomeAssistantError(f"Failed to {action} on EnergyMe device: {err}") from err

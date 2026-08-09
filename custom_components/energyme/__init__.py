@@ -28,7 +28,7 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 # Define the platforms that this integration will support
-PLATFORMS = ["sensor", "light"]
+PLATFORMS = ["sensor", "light", "switch"]
 
 TIMEOUT_REQUESTS = 10
 
