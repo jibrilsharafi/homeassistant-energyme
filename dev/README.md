@@ -42,9 +42,7 @@ python mock_server.py
 - `/api/v1/ade7953/channel` - Channel configuration
 - `/api/v1/ade7953/meter-values` - Meter readings
 
-### `requirements.txt`
-
-Python dependencies for development tools (ruff, colorlog, etc.)
+Python dependencies for these tools are declared in the `dev` optional group in [`../pyproject.toml`](../pyproject.toml) (`uv sync --extra dev`).
 
 ## Development Workflow
 
@@ -71,10 +69,6 @@ Python dependencies for development tools (ruff, colorlog, etc.)
    - Logs are visible in the Docker container output
    - Or check Settings → System → Logs in HA UI
 
-## Scripts (Root Directory)
+## Linting
 
-Development scripts in the `/scripts` directory:
-
-- `./scripts/develop` - Run HA directly (Linux/macOS)
-- `./scripts/lint` - Run linting checks
-- `./scripts/setup` - Setup development environment
+Run `uv run ruff check .` from the repo root.

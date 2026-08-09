@@ -134,7 +134,7 @@ cd dev
 .\run-ha-dev.ps1  # Run Home Assistant in Docker for testing
 ```
 
-Python packages used for development are listed in [`dev/requirements.txt`](dev/requirements.txt).
+Python packages used for development are listed in the `dev` optional group in [`pyproject.toml`](pyproject.toml) (`uv sync --extra dev`).
 
 ## Contributing
 
