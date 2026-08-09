@@ -36,6 +36,7 @@ TIMEOUT_REQUESTS = 10
 DEFAULT_RGB_COLOR = (255, 255, 255)
 
 SERVICE_LED_FLASH = "led_flash"
+SERVICE_LED_RELEASE = "led_release"
 ATTR_DURATION_MS = "duration_ms"
 MAX_FLASH_DURATION_MS = 60000
 
@@ -69,6 +70,11 @@ async def async_setup_entry(
             ),
         },
         "async_led_flash",
+    )
+    platform.async_register_entity_service(
+        SERVICE_LED_RELEASE,
+        {},
+        "async_led_release",
     )
 
 
@@ -162,6 +168,27 @@ class EnergyMeLed(CoordinatorEntity, LightEntity):  # type: ignore[misc]
         """
         self._raise_if_unsupported()
         await self._async_set_color(rgb_color, pattern="solid", duration_ms=duration_ms)
+        await self.coordinator.async_request_refresh()
+
+    async def async_led_release(self) -> None:
+        """Release the user layer, handing control back to the device.
+
+        Unlike turn_off (which forces the LED dark), this reveals whatever
+        the device would otherwise be showing - normally its ambient status
+        color, or a network/alert/critical indication if one is active.
+        """
+        self._raise_if_unsupported()
+        url = f"http://{self._host}/api/v1/led/color"
+
+        def delete_color():
+            return requests.delete(
+                url,
+                auth=self._auth,
+                timeout=TIMEOUT_REQUESTS,
+                headers={"accept": "application/json"},
+            )
+
+        await self._async_request(delete_color, "release LED color")
         await self.coordinator.async_request_refresh()
 
     def _raise_if_unsupported(self) -> None:

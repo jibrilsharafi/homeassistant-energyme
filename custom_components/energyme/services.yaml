@@ -26,3 +26,15 @@ led_flash:
           min: 1
           max: 60000
           unit_of_measurement: ms
+
+led_release:
+  name: Release LED control
+  description: >-
+    Hand control of the LED back to the device, revealing whatever it would
+    otherwise be showing (normally its ambient status color, or a
+    network/alert/critical indication if one is active). Turning the light
+    off instead forces it dark. Requires firmware >= 2.3.0.
+  target:
+    entity:
+      domain: light
+      integration: energyme
