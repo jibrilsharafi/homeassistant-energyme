@@ -27,7 +27,7 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 # Define the platforms that this integration will support
-PLATFORMS = ["sensor"]
+PLATFORMS = ["sensor", "light"]
 
 TIMEOUT_REQUESTS = 10
 
@@ -87,17 +87,20 @@ async def async_update_options_listener(hass: HomeAssistant, entry: ConfigEntry)
     """Handle options update."""
     coordinators = hass.data[DOMAIN][entry.entry_id]
     meter_coordinator: DataUpdateCoordinator = coordinators["meter_coordinator"]
+    led_coordinator: DataUpdateCoordinator = coordinators["led_coordinator"]
     new_scan_interval = entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
     _LOGGER.debug(
         "Updating scan interval for %s to %s seconds",
         entry.title,
         new_scan_interval,
     )
-    # Only update the meter coordinator interval (system coordinator stays at fixed interval)
+    # Meter and LED coordinators follow the configurable interval (system coordinator stays fixed)
     meter_coordinator.update_interval = timedelta(seconds=new_scan_interval)
+    led_coordinator.update_interval = timedelta(seconds=new_scan_interval)
 
     # Request a refresh with the new interval
     await meter_coordinator.async_request_refresh()
+    await led_coordinator.async_request_refresh()
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -232,6 +235,41 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             _LOGGER.exception("Unexpected error fetching EnergyMe system data")
             raise UpdateFailed(f"Unexpected error: {err}")
 
+    async def async_update_led_data():
+        """Fetch LED state from API endpoint."""
+        try:
+            led_url = f"http://{host}/api/v1/led"
+
+            def get_led_state():
+                return requests.get(
+                    led_url,
+                    auth=auth,
+                    timeout=TIMEOUT_REQUESTS,
+                    headers={"accept": "application/json"}
+                )
+
+            raw_led_state = await hass.async_add_executor_job(get_led_state)
+            raw_led_state.raise_for_status()
+            return raw_led_state.json()
+
+        except requests.exceptions.HTTPError as err:
+            if err.response.status_code == HTTPStatus.UNAUTHORIZED.value:
+                _LOGGER.error("Authentication failed for EnergyMe device at %s for LED data", host)
+                raise ConfigEntryAuthFailed(
+                    f"Authentication failed for EnergyMe device at {host}"
+                ) from err
+            _LOGGER.error("HTTP error from EnergyMe device for LED data: %s", err)
+            raise UpdateFailed(f"HTTP error from EnergyMe device: {err}") from err
+        except requests.exceptions.Timeout:
+            _LOGGER.error("Timeout connecting to EnergyMe device at %s for LED data", host)
+            raise UpdateFailed(f"Timeout connecting to EnergyMe device at {host}")
+        except requests.exceptions.ConnectionError:
+            _LOGGER.error("Error connecting to EnergyMe device at %s for LED data", host)
+            raise UpdateFailed(f"Error connecting to EnergyMe device at {host}")
+        except Exception as err:
+            _LOGGER.exception("Unexpected error fetching EnergyMe LED data")
+            raise UpdateFailed(f"Unexpected error: {err}")
+
     # Create meter data coordinator (configurable interval)
     meter_coordinator = DataUpdateCoordinator(
         hass,
@@ -250,15 +288,27 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         update_interval=timedelta(seconds=SYSTEM_SCAN_INTERVAL),  # Fixed interval
     )
 
+    # Create LED data coordinator (same cadence as meter data, so on/off/colour
+    # changes made elsewhere - e.g. the device's own web UI - show up promptly)
+    led_coordinator = DataUpdateCoordinator(
+        hass,
+        _LOGGER,
+        name=f"{DOMAIN}_led_coordinator_{host}",
+        update_method=async_update_led_data,
+        update_interval=timedelta(seconds=scan_interval),
+    )
+
     # Fetch initial data so we have it when entities are set up.
     # If the fetch fails, it will raise ConfigEntryNotReady and setup will retry.
     await meter_coordinator.async_config_entry_first_refresh()
     await system_coordinator.async_config_entry_first_refresh()
+    await led_coordinator.async_config_entry_first_refresh()
 
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN][entry.entry_id] = {
         "meter_coordinator": meter_coordinator,
         "system_coordinator": system_coordinator,
+        "led_coordinator": led_coordinator,
         "config_entry": entry,
     }
 

@@ -28,9 +28,6 @@ from .const import AUTHOR, COMPANY, DOMAIN, CONF_HOST, MODEL, SYSTEM_SENSORS
 
 _LOGGER = logging.getLogger(__name__)
 
-# TODO: clean comments and docs
-# TODO: add control for LED (can we add only brigthness or also fun RGB?)
-
 # Define a structure for your sensor types
 # Sensors that should be enabled by default on ALL channels
 DEFAULT_ENABLED_ALL_CHANNELS = ["activePower", "activeEnergyImported"]
